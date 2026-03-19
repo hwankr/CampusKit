@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import type { MessageKey } from "../../shared/i18n/messages/ko";
 import { useI18n } from "../../shared/i18n/useI18n";
 import { getFileName } from "../../shared/platform/path";
-import { parsePageRangeInput, type PageSegment } from "./model/pageRange";
+import {
+  addSplitPoint,
+  buildPageSegmentsFromSplitPoints,
+  removeSplitPoint,
+  type PageSegment,
+} from "./model/pageRange";
 import { getPendingPdfFileName, type PdfDocumentMetadata } from "./model/pdfDocument";
 import { buildPreviewFileName, deriveSplitBaseName, toSplitRequestPayload } from "./model/splitJob";
 import { pdfSplitService } from "./service/pdfSplitService";
@@ -24,7 +29,8 @@ export function PdfSplitPage() {
   const [document, setDocument] = useState<PdfDocumentMetadata | null>(null);
   const [pendingInputPath, setPendingInputPath] = useState<string | null>(null);
   const [outputDir, setOutputDir] = useState("");
-  const [pageRangeText, setPageRangeText] = useState("");
+  const [splitPointInput, setSplitPointInput] = useState("");
+  const [splitPoints, setSplitPoints] = useState<number[]>([]);
   const [segments, setSegments] = useState<PageSegment[]>([]);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [outputFiles, setOutputFiles] = useState<string[]>([]);
@@ -48,7 +54,7 @@ export function PdfSplitPage() {
   }
 
   useEffect(() => {
-    if (!pageRangeText.trim() || pageCount === null) {
+    if (pageCount === null) {
       setSegments([]);
       setValidationMessage(null);
       setSelectedRangeIndex(0);
@@ -56,9 +62,8 @@ export function PdfSplitPage() {
     }
 
     try {
-      const nextSegments = parsePageRangeInput(pageRangeText, pageCount);
+      const nextSegments = buildPageSegmentsFromSplitPoints(splitPoints, pageCount);
       setSegments(nextSegments);
-      setValidationMessage(null);
       setSelectedRangeIndex((currentIndex) =>
         Math.min(currentIndex, Math.max(nextSegments.length - 1, 0)),
       );
@@ -69,7 +74,7 @@ export function PdfSplitPage() {
       setValidationMessage(t(errorKey));
       setSelectedRangeIndex(0);
     }
-  }, [pageCount, pageRangeText, t]);
+  }, [pageCount, splitPoints, t]);
 
   const expectedFiles = segments.map((segment, index) =>
     buildPreviewFileName(deriveSplitBaseName(documentName || inputPath), segment, index),
@@ -87,6 +92,7 @@ export function PdfSplitPage() {
     Boolean(inputPath) &&
     Boolean(outputDir) &&
     pageCount !== null &&
+    splitPoints.length > 0 &&
     segments.length > 0 &&
     !validationMessage &&
     !isBusy;
@@ -109,7 +115,8 @@ export function PdfSplitPage() {
       const metadata = await pdfSplitService.getPdfMetadata(selectedPath);
       setDocument(metadata);
       setPendingInputPath(null);
-      setPageRangeText("");
+      setSplitPointInput("");
+      setSplitPoints([]);
       setSegments([]);
       setOutputFiles([]);
       setValidationMessage(null);
@@ -163,12 +170,50 @@ export function PdfSplitPage() {
     }
   }
 
-  function handleRangeChange(value: string) {
-    setPageRangeText(value);
+  function handleSplitPointInputChange(value: string) {
+    setSplitPointInput(value);
     setOutputFiles([]);
+
+    if (validationMessage) {
+      setValidationMessage(null);
+    }
 
     if (status.tone !== "running") {
       setStatus(buildIdleStatus(pageCount));
+    }
+  }
+
+  function handleAddSplitPoint() {
+    if (pageCount === null || isBusy) {
+      return;
+    }
+
+    try {
+      setSplitPoints((current) => addSplitPoint(current, splitPointInput, pageCount));
+      setSplitPointInput("");
+      setOutputFiles([]);
+      setValidationMessage(null);
+      setStatus(buildIdleStatus(pageCount));
+    } catch (error) {
+      const errorKey: MessageKey =
+        error instanceof Error ? (error.message as MessageKey) : "statusUnknownError";
+      setValidationMessage(t(errorKey));
+    }
+  }
+
+  function handleRemoveSplitPoint(splitPoint: number) {
+    setSplitPoints((current) => removeSplitPoint(current, splitPoint));
+    setOutputFiles([]);
+    setValidationMessage(null);
+
+    if (status.tone !== "running") {
+      setStatus(buildIdleStatus(pageCount));
+    }
+  }
+
+  function handleSplitPointInputKeyDown(key: string) {
+    if (key === "Enter") {
+      handleAddSplitPoint();
     }
   }
 
@@ -227,16 +272,47 @@ export function PdfSplitPage() {
                 </div>
               </label>
 
-              <label className="field-block">
+              <div className="field-block">
                 <span className="field-label">{t("pageRangeLabel")}</span>
-                <textarea
-                  className="field-textarea"
-                  value={pageRangeText}
-                  onChange={(event) => handleRangeChange(event.currentTarget.value)}
-                  placeholder={t("pageRangePlaceholder")}
-                  rows={4}
-                />
-              </label>
+                <div className="field-row">
+                  <input
+                    className="field-input"
+                    value={splitPointInput}
+                    onChange={(event) => handleSplitPointInputChange(event.currentTarget.value)}
+                    onKeyDown={(event) => handleSplitPointInputKeyDown(event.key)}
+                    placeholder={t("pageRangePlaceholder")}
+                    disabled={pageCount === null || isBusy}
+                  />
+                  <button
+                    type="button"
+                    className="ghost-button"
+                    onClick={handleAddSplitPoint}
+                    disabled={pageCount === null || isBusy}
+                  >
+                    {t("splitPointAddAction")}
+                  </button>
+                </div>
+
+                <div className="split-pointList" data-empty={splitPoints.length === 0}>
+                  {splitPoints.length > 0 ? (
+                    splitPoints.map((splitPoint) => (
+                      <div key={splitPoint} className="split-pointChip">
+                        <span>{`${splitPoint}${t("splitPointAfterSuffix")}`}</span>
+                        <button
+                          type="button"
+                          className="ghost-button split-pointRemove"
+                          onClick={() => handleRemoveSplitPoint(splitPoint)}
+                          disabled={isBusy}
+                        >
+                          {t("splitPointRemoveAction")}
+                        </button>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="split-emptyCopy">{t("splitPointEmpty")}</p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {validationMessage ? <div className="validation-banner">{validationMessage}</div> : null}

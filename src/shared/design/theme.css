@@ -390,6 +390,27 @@ button {
   gap: var(--space-3);
 }
 
+.split-pointList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.split-pointChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.split-pointRemove {
+  min-height: 36px;
+  padding: 0 12px;
+}
+
 .split-rangeCard,
 .split-thumbnailCard {
   padding: var(--space-4);

@@ -16,12 +16,14 @@ test("pdf split page wires the feature service without importing the platform br
   assert.doesNotMatch(source, /documentBridge/);
 });
 
-test("pdf split page keeps the current workspace slots while running a live split flow", async () => {
+test("pdf split page derives segments from split points while keeping the current workspace slots", async () => {
   const source = await readFile(pagePath, "utf8");
 
-  assert.match(source, /parsePageRangeInput/);
-  assert.match(source, /toSplitRequestPayload/);
-  assert.match(source, /buildPreviewFileName/);
+  assert.match(source, /addSplitPoint/);
+  assert.match(source, /buildPageSegmentsFromSplitPoints/);
+  assert.match(source, /removeSplitPoint/);
+  assert.match(source, /splitPointInput/);
+  assert.doesNotMatch(source, /parsePageRangeInput/);
   assert.match(source, /statusLoadingDocument/);
   assert.match(source, /statusReplacingDocument/);
   assert.match(source, /statusMetadataReplaceError/);
