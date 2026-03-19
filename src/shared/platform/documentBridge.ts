@@ -1,0 +1,47 @@
+import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import type { SplitRequestPayload } from "../../features/pdf-split/model/splitJob";
+
+type PdfMetadataResponse = {
+  fileName: string;
+  pageCount: number;
+};
+
+type SplitPdfResponse = {
+  outputFiles: string[];
+};
+
+function coerceDialogPath(value: string | string[] | null) {
+  return typeof value === "string" ? value : null;
+}
+
+export async function pickPdfFile() {
+  const selected = await open({
+    multiple: false,
+    directory: false,
+    filters: [{ name: "PDF", extensions: ["pdf"] }],
+  });
+
+  return coerceDialogPath(selected);
+}
+
+export async function pickOutputDirectory() {
+  const selected = await open({
+    multiple: false,
+    directory: true,
+  });
+
+  return coerceDialogPath(selected);
+}
+
+export async function getPdfMetadata(inputPath: string) {
+  return invoke<PdfMetadataResponse>("get_pdf_metadata", {
+    request: { inputPath },
+  });
+}
+
+export async function splitPdf(request: SplitRequestPayload) {
+  return invoke<SplitPdfResponse>("split_pdf", {
+    request,
+  });
+}

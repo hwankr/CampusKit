@@ -1,0 +1,45 @@
+:root {
+  --font-body: "IBM Plex Sans", "Noto Sans KR", "Segoe UI Variable Text", "Malgun Gothic", sans-serif;
+  --font-accent: "Iowan Old Style", "Noto Serif KR", Georgia, serif;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 32px;
+  --space-8: 40px;
+  --space-9: 48px;
+
+  --radius-sm: 10px;
+  --radius-md: 16px;
+  --radius-lg: 24px;
+  --radius-xl: 32px;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 2.1rem;
+
+  --surface-canvas: #eef2f3;
+  --surface-shell: rgba(248, 249, 250, 0.82);
+  --surface-panel: rgba(255, 255, 255, 0.86);
+  --surface-panel-strong: #ffffff;
+
+  --ink-strong: #17211f;
+  --ink-body: #42514d;
+  --ink-soft: #6f7c78;
+  --line-soft: rgba(26, 40, 37, 0.08);
+
+  --accent: #146a57;
+  --accent-soft: rgba(20, 106, 87, 0.12);
+  --accent-strong: #0d5344;
+  --danger-soft: rgba(153, 58, 43, 0.14);
+  --danger-ink: #8a3b2f;
+
+  --shadow-shell: 0 24px 80px rgba(26, 37, 35, 0.14);
+  --shadow-panel: 0 18px 36px rgba(26, 37, 35, 0.08);
+}
