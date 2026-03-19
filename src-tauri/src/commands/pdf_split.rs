@@ -3,7 +3,7 @@ use lopdf::Document;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -76,7 +76,7 @@ pub fn split_pdf(request: SplitPdfRequest) -> Result<SplitPdfResponse, String> {
 
     for (index, segment) in request.segments.iter().enumerate() {
         let file_name = build_output_filename(&base_name, &segment_label(segment), index);
-        let destination = output_dir.join(file_name);
+        let destination = resolve_available_output_path(&output_dir, &file_name);
         let bytes = extract_segment_pdf(&original, segment.start, segment.end)?;
 
         fs::write(&destination, bytes).map_err(|error| error.to_string())?;
@@ -124,6 +124,34 @@ fn segment_label(segment: &SplitSegment) -> String {
     }
 }
 
+fn resolve_available_output_path(output_dir: &Path, file_name: &str) -> PathBuf {
+    let destination = output_dir.join(file_name);
+    if !destination.exists() {
+        return destination;
+    }
+
+    let file_path = Path::new(file_name);
+    let stem = file_path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("split");
+    let extension = file_path
+        .extension()
+        .and_then(|value| value.to_str())
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("pdf");
+
+    for copy_index in 1.. {
+        let candidate = output_dir.join(format!("{stem}-copy-{copy_index:02}.{extension}"));
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    unreachable!("copy-index loop must eventually find an available file name")
+}
+
 fn extract_segment_pdf(original: &Document, start: usize, end: usize) -> Result<Vec<u8>, String> {
     let pages = original.get_pages();
     let mut cloned = original.clone();
@@ -155,13 +183,16 @@ fn extract_segment_pdf(original: &Document, start: usize, end: usize) -> Result<
 
 #[cfg(test)]
 mod tests {
-    use lopdf::content::{Content, Operation};
-    use lopdf::{dictionary, Document, Object, Stream};
-    use super::{validate_segments, SplitSegment};
+    use super::{
+        get_pdf_metadata, split_pdf, validate_segments, PdfMetadataRequest, SplitPdfRequest,
+        SplitSegment,
+    };
     use crate::platform::pathing::{build_output_filename, default_base_name_from_path};
+    use lopdf::content::{Content, Operation};
+    use lopdf::{dictionary, Document, Object, ObjectId, Stream};
+    use std::fs;
     use std::path::{Path, PathBuf};
     use std::time::{SystemTime, UNIX_EPOCH};
-    use super::{get_pdf_metadata, PdfMetadataRequest};
 
     #[test]
     fn rejects_overlapping_segments() {
@@ -191,7 +222,7 @@ mod tests {
     #[test]
     fn reads_metadata_from_a_real_pdf_file() {
         let file_path = build_temp_pdf_path();
-        write_sample_pdf(&file_path);
+        write_sample_pdf(&file_path, &["CampusKit PDF metadata test"]);
 
         let response = get_pdf_metadata(PdfMetadataRequest {
             input_path: file_path.to_string_lossy().to_string(),
@@ -207,6 +238,72 @@ mod tests {
         std::fs::remove_file(file_path).expect("sample pdf should be removed");
     }
 
+    #[test]
+    fn splits_a_real_pdf_and_avoids_overwriting_existing_output_files() {
+        let input_path = build_temp_pdf_path();
+        let output_dir = build_temp_output_dir();
+        write_sample_pdf(
+            &input_path,
+            &[
+                "CampusKit split test page 1",
+                "CampusKit split test page 2",
+                "CampusKit split test page 3",
+            ],
+        );
+
+        let request = SplitPdfRequest {
+            input_path: input_path.to_string_lossy().to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            base_name: "campuskit-sample".into(),
+            segments: vec![
+                SplitSegment { start: 1, end: 1 },
+                SplitSegment { start: 2, end: 3 },
+            ],
+        };
+
+        let first_run = split_pdf(request).expect("first split should succeed");
+        assert_eq!(first_run.output_files.len(), 2);
+        assert!(first_run.output_files[0].ends_with("campuskit-sample-part-01-pages-1.pdf"));
+        assert!(first_run.output_files[1].ends_with("campuskit-sample-part-02-pages-2-3.pdf"));
+
+        for output_path in &first_run.output_files {
+            assert!(Path::new(output_path).exists(), "split output should be written");
+        }
+
+        let first_file_metadata = get_pdf_metadata(PdfMetadataRequest {
+            input_path: first_run.output_files[0].clone(),
+        })
+        .expect("first split output should be a readable pdf");
+        let second_file_metadata = get_pdf_metadata(PdfMetadataRequest {
+            input_path: first_run.output_files[1].clone(),
+        })
+        .expect("second split output should be a readable pdf");
+        assert_eq!(first_file_metadata.page_count, 1);
+        assert_eq!(second_file_metadata.page_count, 2);
+
+        let second_run = split_pdf(SplitPdfRequest {
+            input_path: input_path.to_string_lossy().to_string(),
+            output_dir: output_dir.to_string_lossy().to_string(),
+            base_name: "campuskit-sample".into(),
+            segments: vec![
+                SplitSegment { start: 1, end: 1 },
+                SplitSegment { start: 2, end: 3 },
+            ],
+        })
+        .expect("second split should succeed");
+        assert_eq!(second_run.output_files.len(), 2);
+        assert!(second_run.output_files[0].ends_with("campuskit-sample-part-01-pages-1-copy-01.pdf"));
+        assert!(second_run.output_files[1].ends_with("campuskit-sample-part-02-pages-2-3-copy-01.pdf"));
+        assert_ne!(first_run.output_files, second_run.output_files);
+
+        for output_path in &second_run.output_files {
+            assert!(Path::new(output_path).exists(), "renamed split output should be written");
+        }
+
+        fs::remove_file(input_path).expect("sample input pdf should be removed");
+        fs::remove_dir_all(output_dir).expect("sample output directory should be removed");
+    }
+
     fn build_temp_pdf_path() -> PathBuf {
         let timestamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -216,7 +313,16 @@ mod tests {
         std::env::temp_dir().join(format!("campuskit-metadata-{timestamp}.pdf"))
     }
 
-    fn write_sample_pdf(path: &Path) {
+    fn build_temp_output_dir() -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after epoch")
+            .as_nanos();
+
+        std::env::temp_dir().join(format!("campuskit-split-output-{timestamp}"))
+    }
+
+    fn write_sample_pdf(path: &Path, page_texts: &[&str]) {
         let mut document = Document::with_version("1.5");
         let pages_id = document.new_object_id();
 
@@ -232,31 +338,21 @@ mod tests {
             },
         });
 
-        let content = Content {
-            operations: vec![
-                Operation::new("BT", vec![]),
-                Operation::new("Tf", vec!["F1".into(), 18.into()]),
-                Operation::new("Td", vec![72.into(), 720.into()]),
-                Operation::new("Tj", vec![Object::string_literal("CampusKit PDF metadata test")]),
-                Operation::new("ET", vec![]),
-            ],
-        };
-
-        let content_id = document.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
-        let page_id = document.add_object(dictionary! {
-            "Type" => "Page",
-            "Parent" => pages_id,
-            "Contents" => content_id,
-            "Resources" => resources_id,
-            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
-        });
+        let page_ids = page_texts
+            .iter()
+            .map(|text| build_sample_page(&mut document, pages_id, resources_id, text))
+            .collect::<Vec<ObjectId>>();
 
         document.objects.insert(
             pages_id,
             Object::Dictionary(dictionary! {
                 "Type" => "Pages",
-                "Kids" => vec![page_id.into()],
-                "Count" => 1,
+                "Kids" => page_ids
+                    .iter()
+                    .copied()
+                    .map(Object::Reference)
+                    .collect::<Vec<Object>>(),
+                "Count" => page_ids.len() as i64,
             }),
         );
 
@@ -268,5 +364,33 @@ mod tests {
         document.trailer.set("Root", catalog_id);
         document.compress();
         document.save(path).expect("sample pdf should be written");
+    }
+
+    fn build_sample_page(
+        document: &mut Document,
+        pages_id: ObjectId,
+        resources_id: ObjectId,
+        text: &str,
+    ) -> ObjectId {
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 18.into()]),
+                Operation::new("Td", vec![72.into(), 720.into()]),
+                Operation::new("Tj", vec![Object::string_literal(text)]),
+                Operation::new("ET", vec![]),
+            ],
+        };
+
+        let content_id =
+            document.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+
+        document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+            "Resources" => resources_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        })
     }
 }

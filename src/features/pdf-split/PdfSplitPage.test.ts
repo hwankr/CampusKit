@@ -27,6 +27,8 @@ test("pdf split page derives segments from split points while keeping the curren
   assert.match(source, /statusLoadingDocument/);
   assert.match(source, /statusReplacingDocument/);
   assert.match(source, /statusMetadataReplaceError/);
+  assert.match(source, /describeError/);
+  assert.match(source, /status\.detail/);
   assert.match(source, /pendingInputPath/);
   assert.match(source, /split-documentPath/);
   assert.match(source, /data-slot="dropzone"/);

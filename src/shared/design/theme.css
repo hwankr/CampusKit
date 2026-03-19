@@ -687,6 +687,10 @@ button {
   background: rgba(255, 255, 255, 0.65);
 }
 
+.status-card strong {
+  display: block;
+}
+
 .status-card[data-tone="success"] {
   background: rgba(20, 106, 87, 0.08);
 }
@@ -697,6 +701,14 @@ button {
 
 .status-card[data-tone="running"] {
   background: rgba(232, 240, 237, 0.92);
+}
+
+.status-detail {
+  margin: var(--space-2) 0 0;
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  word-break: break-all;
 }
 
 .preview-list {

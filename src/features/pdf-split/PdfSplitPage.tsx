@@ -13,10 +13,10 @@ import { buildPreviewFileName, deriveSplitBaseName, toSplitRequestPayload } from
 import { pdfSplitService } from "./service/pdfSplitService";
 
 type StatusState =
-  | { tone: "idle"; message: string }
-  | { tone: "running"; activity: "document" | "split"; message: string }
-  | { tone: "success"; message: string }
-  | { tone: "error"; message: string };
+  | { tone: "idle"; message: string; detail?: string }
+  | { tone: "running"; activity: "document" | "split"; message: string; detail?: string }
+  | { tone: "success"; message: string; detail?: string }
+  | { tone: "error"; message: string; detail?: string };
 
 type RangeEntry = {
   fileName: string;
@@ -51,6 +51,28 @@ export function PdfSplitPage() {
       tone: "idle",
       message: currentPageCount !== null ? t("statusReadyForRange") : t("statusAwaitingSetup"),
     };
+  }
+
+  function describeError(error: unknown) {
+    if (typeof error === "string" && error.trim()) {
+      return error;
+    }
+
+    if (error instanceof Error && error.message.trim()) {
+      return error.message;
+    }
+
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "message" in error &&
+      typeof error.message === "string" &&
+      error.message.trim()
+    ) {
+      return error.message;
+    }
+
+    return t("statusUnknownError");
   }
 
   useEffect(() => {
@@ -161,11 +183,13 @@ export function PdfSplitPage() {
       setStatus({
         tone: "success",
         message: t("statusSplitSuccess"),
+        detail: `${response.outputFiles.length} file(s) saved to ${outputDir}`,
       });
-    } catch {
+    } catch (error) {
       setStatus({
         tone: "error",
         message: t("statusSplitError"),
+        detail: describeError(error),
       });
     }
   }
@@ -318,7 +342,8 @@ export function PdfSplitPage() {
             {validationMessage ? <div className="validation-banner">{validationMessage}</div> : null}
 
             <div className="status-card" data-tone={status.tone}>
-              {status.message}
+              <strong>{status.message}</strong>
+              {status.detail ? <p className="status-detail">{status.detail}</p> : null}
             </div>
 
             <ol className="split-flowList">
