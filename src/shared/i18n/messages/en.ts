@@ -48,7 +48,11 @@ export const enMessages: MessageCatalog = {
   summaryEmptyState: "Previewed output files will appear here after you define ranges.",
   statusAwaitingSetup: "Choose a file and ranges to prepare the run.",
   statusReadyForRange: "Document loaded. Define your split ranges next.",
+  statusLoadingDocument: "Loading PDF document metadata now.",
+  statusReplacingDocument: "Loading the selected PDF now. The current document will be replaced after the metadata succeeds.",
   statusMetadataError: "The document metadata could not be read. Try another PDF.",
+  statusMetadataReplaceError:
+    "The selected PDF could not be read. The current document is still kept in place.",
   statusSplitRunning: "Splitting the PDF now.",
   statusSplitSuccess: "Split completed.",
   statusSplitError: "An error occurred while splitting the PDF.",

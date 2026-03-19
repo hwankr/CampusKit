@@ -22,6 +22,11 @@ test("pdf split page keeps the current workspace slots while running a live spli
   assert.match(source, /parsePageRangeInput/);
   assert.match(source, /toSplitRequestPayload/);
   assert.match(source, /buildPreviewFileName/);
+  assert.match(source, /statusLoadingDocument/);
+  assert.match(source, /statusReplacingDocument/);
+  assert.match(source, /statusMetadataReplaceError/);
+  assert.match(source, /pendingInputPath/);
+  assert.match(source, /split-documentPath/);
   assert.match(source, /data-slot="dropzone"/);
   assert.match(source, /data-slot="document-info"/);
   assert.match(source, /data-slot="preview-panel"/);

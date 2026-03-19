@@ -369,6 +369,14 @@ button {
   line-height: 1.5;
 }
 
+.split-documentPath {
+  margin: 0 0 var(--space-5);
+  color: var(--ink-soft);
+  font-size: var(--text-sm);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
 .split-metricGrid {
   display: grid;
   grid-template-columns: 1fr;

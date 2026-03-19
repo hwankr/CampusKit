@@ -155,9 +155,13 @@ fn extract_segment_pdf(original: &Document, start: usize, end: usize) -> Result<
 
 #[cfg(test)]
 mod tests {
+    use lopdf::content::{Content, Operation};
+    use lopdf::{dictionary, Document, Object, Stream};
     use super::{validate_segments, SplitSegment};
     use crate::platform::pathing::{build_output_filename, default_base_name_from_path};
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+    use std::time::{SystemTime, UNIX_EPOCH};
+    use super::{get_pdf_metadata, PdfMetadataRequest};
 
     #[test]
     fn rejects_overlapping_segments() {
@@ -182,5 +186,87 @@ mod tests {
     fn falls_back_to_path_stem() {
         let output = default_base_name_from_path(Path::new("C:/docs/report.final.pdf"));
         assert_eq!(output, "report.final");
+    }
+
+    #[test]
+    fn reads_metadata_from_a_real_pdf_file() {
+        let file_path = build_temp_pdf_path();
+        write_sample_pdf(&file_path);
+
+        let response = get_pdf_metadata(PdfMetadataRequest {
+            input_path: file_path.to_string_lossy().to_string(),
+        })
+        .expect("sample pdf metadata should load");
+
+        assert_eq!(
+            response.file_name,
+            file_path.file_name().and_then(|value| value.to_str()).unwrap()
+        );
+        assert_eq!(response.page_count, 1);
+
+        std::fs::remove_file(file_path).expect("sample pdf should be removed");
+    }
+
+    fn build_temp_pdf_path() -> PathBuf {
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time should be after epoch")
+            .as_nanos();
+
+        std::env::temp_dir().join(format!("campuskit-metadata-{timestamp}.pdf"))
+    }
+
+    fn write_sample_pdf(path: &Path) {
+        let mut document = Document::with_version("1.5");
+        let pages_id = document.new_object_id();
+
+        let font_id = document.add_object(dictionary! {
+            "Type" => "Font",
+            "Subtype" => "Type1",
+            "BaseFont" => "Courier",
+        });
+
+        let resources_id = document.add_object(dictionary! {
+            "Font" => dictionary! {
+                "F1" => font_id,
+            },
+        });
+
+        let content = Content {
+            operations: vec![
+                Operation::new("BT", vec![]),
+                Operation::new("Tf", vec!["F1".into(), 18.into()]),
+                Operation::new("Td", vec![72.into(), 720.into()]),
+                Operation::new("Tj", vec![Object::string_literal("CampusKit PDF metadata test")]),
+                Operation::new("ET", vec![]),
+            ],
+        };
+
+        let content_id = document.add_object(Stream::new(dictionary! {}, content.encode().unwrap()));
+        let page_id = document.add_object(dictionary! {
+            "Type" => "Page",
+            "Parent" => pages_id,
+            "Contents" => content_id,
+            "Resources" => resources_id,
+            "MediaBox" => vec![0.into(), 0.into(), 595.into(), 842.into()],
+        });
+
+        document.objects.insert(
+            pages_id,
+            Object::Dictionary(dictionary! {
+                "Type" => "Pages",
+                "Kids" => vec![page_id.into()],
+                "Count" => 1,
+            }),
+        );
+
+        let catalog_id = document.add_object(dictionary! {
+            "Type" => "Catalog",
+            "Pages" => pages_id,
+        });
+
+        document.trailer.set("Root", catalog_id);
+        document.compress();
+        document.save(path).expect("sample pdf should be written");
     }
 }

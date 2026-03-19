@@ -3,12 +3,13 @@ import type { MessageKey } from "../../shared/i18n/messages/ko";
 import { useI18n } from "../../shared/i18n/useI18n";
 import { getFileName } from "../../shared/platform/path";
 import { parsePageRangeInput, type PageSegment } from "./model/pageRange";
+import { getPendingPdfFileName, type PdfDocumentMetadata } from "./model/pdfDocument";
 import { buildPreviewFileName, deriveSplitBaseName, toSplitRequestPayload } from "./model/splitJob";
 import { pdfSplitService } from "./service/pdfSplitService";
 
 type StatusState =
   | { tone: "idle"; message: string }
-  | { tone: "running"; message: string }
+  | { tone: "running"; activity: "document" | "split"; message: string }
   | { tone: "success"; message: string }
   | { tone: "error"; message: string };
 
@@ -20,10 +21,9 @@ type RangeEntry = {
 
 export function PdfSplitPage() {
   const { t } = useI18n();
-  const [inputPath, setInputPath] = useState("");
+  const [document, setDocument] = useState<PdfDocumentMetadata | null>(null);
+  const [pendingInputPath, setPendingInputPath] = useState<string | null>(null);
   const [outputDir, setOutputDir] = useState("");
-  const [documentName, setDocumentName] = useState("");
-  const [pageCount, setPageCount] = useState<number | null>(null);
   const [pageRangeText, setPageRangeText] = useState("");
   const [segments, setSegments] = useState<PageSegment[]>([]);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
@@ -33,6 +33,12 @@ export function PdfSplitPage() {
     tone: "idle",
     message: t("statusAwaitingSetup"),
   });
+  const inputPath = document?.inputPath ?? "";
+  const pageCount = document?.pageCount ?? null;
+  const documentName = document?.fileName ?? getPendingPdfFileName(pendingInputPath);
+  const displayedInputPath = document?.inputPath ?? pendingInputPath ?? "";
+  const isBusy = status.tone === "running";
+  const isSplitRunning = status.tone === "running" && status.activity === "split";
 
   function buildIdleStatus(currentPageCount: number | null): StatusState {
     return {
@@ -83,7 +89,7 @@ export function PdfSplitPage() {
     pageCount !== null &&
     segments.length > 0 &&
     !validationMessage &&
-    status.tone !== "running";
+    !isBusy;
 
   async function handleChooseInput() {
     const selectedPath = await pdfSplitService.pickPdfFile();
@@ -91,11 +97,18 @@ export function PdfSplitPage() {
       return;
     }
 
+    const hasExistingDocument = document !== null;
+    setPendingInputPath(selectedPath);
+    setStatus({
+      tone: "running",
+      activity: "document",
+      message: t(hasExistingDocument ? "statusReplacingDocument" : "statusLoadingDocument"),
+    });
+
     try {
       const metadata = await pdfSplitService.getPdfMetadata(selectedPath);
-      setInputPath(selectedPath);
-      setDocumentName(metadata.fileName);
-      setPageCount(metadata.pageCount);
+      setDocument(metadata);
+      setPendingInputPath(null);
       setPageRangeText("");
       setSegments([]);
       setOutputFiles([]);
@@ -103,9 +116,10 @@ export function PdfSplitPage() {
       setSelectedRangeIndex(0);
       setStatus(buildIdleStatus(metadata.pageCount));
     } catch {
+      setPendingInputPath(null);
       setStatus({
         tone: "error",
-        message: t("statusMetadataError"),
+        message: t(hasExistingDocument ? "statusMetadataReplaceError" : "statusMetadataError"),
       });
     }
   }
@@ -128,6 +142,7 @@ export function PdfSplitPage() {
 
     setStatus({
       tone: "running",
+      activity: "split",
       message: t("statusSplitRunning"),
     });
 
@@ -158,7 +173,10 @@ export function PdfSplitPage() {
   }
 
   return (
-    <section className="split-stage" data-live-state={inputPath ? "loaded" : "empty"}>
+    <section
+      className="split-stage"
+      data-live-state={document ? "loaded" : pendingInputPath ? "loading" : "empty"}
+    >
       <div className="panel-card split-stageCard">
         <div className="split-stageIntro">
           <div>
@@ -170,13 +188,13 @@ export function PdfSplitPage() {
         </div>
 
         <div className="split-stageGrid">
-          <div className="split-dropzone" data-slot="dropzone" data-empty={!inputPath}>
+          <div className="split-dropzone" data-slot="dropzone" data-empty={!displayedInputPath}>
             <div className="split-dropzoneBadge">PDF</div>
             <h3 className="split-panelTitle">{t("inputFileLabel")}</h3>
             <p className="split-panelCopy">{t("pdfSplitIntakeBody")}</p>
 
             <div className="split-stageActions">
-              <button type="button" className="primary-button" onClick={handleChooseInput}>
+              <button type="button" className="primary-button" onClick={handleChooseInput} disabled={isBusy}>
                 {t("browseFileAction")}
               </button>
             </div>
@@ -185,6 +203,8 @@ export function PdfSplitPage() {
               <span>{t("inputFileLabel")}</span>
               <strong>{documentName || t("summaryPendingValue")}</strong>
             </div>
+
+            {displayedInputPath ? <p className="split-documentPath">{displayedInputPath}</p> : null}
           </div>
 
           <div className="split-flowCard" data-slot="setup-panel">
@@ -201,7 +221,7 @@ export function PdfSplitPage() {
                     readOnly
                     placeholder={t("outputDirPlaceholder")}
                   />
-                  <button type="button" className="ghost-button" onClick={handleChooseOutput}>
+                  <button type="button" className="ghost-button" onClick={handleChooseOutput} disabled={isBusy}>
                     {t("browseFolderAction")}
                   </button>
                 </div>
@@ -237,17 +257,22 @@ export function PdfSplitPage() {
 
       <div className="split-workspaceGrid">
         <div className="split-sidebarColumn">
-          <section className="panel-card split-infoPanel" data-slot="document-info" data-empty={!inputPath}>
+          <section
+            className="panel-card split-infoPanel"
+            data-slot="document-info"
+            data-empty={!displayedInputPath}
+          >
             <div className="section-badge">{t("summaryDocumentLabel")}</div>
             <h3 className="split-panelTitle">{t("pdfSplitDocTitle")}</h3>
 
-            {inputPath ? (
+            {displayedInputPath ? (
               <>
-                <strong className="split-documentName">{documentName || getFileName(inputPath)}</strong>
+                <strong className="split-documentName">{documentName || getFileName(displayedInputPath)}</strong>
+                <p className="split-documentPath">{displayedInputPath}</p>
                 <div className="split-metricGrid">
                   <div className="metric-card">
                     <span className="metric-label">{t("summaryPageCountLabel")}</span>
-                    <strong>{pageCount ?? "-"}</strong>
+                    <strong>{pageCount ?? t("summaryPendingValue")}</strong>
                   </div>
                   <div className="metric-card">
                     <span className="metric-label">{t("summaryOutputCountLabel")}</span>
@@ -312,7 +337,7 @@ export function PdfSplitPage() {
               disabled={!canSubmit}
               onClick={handleSubmit}
             >
-              {status.tone === "running" ? t("splitRunningAction") : t("splitSubmitAction")}
+              {isSplitRunning ? t("splitRunningAction") : t("splitSubmitAction")}
             </button>
           </section>
         </div>
