@@ -5,21 +5,27 @@ import test from "node:test";
 
 const pagePath = path.resolve("src/features/pdf-split/PdfSplitPage.tsx");
 
-test("pdf split page declares the empty and demo state markers", async () => {
+test("pdf split page wires the feature service without importing the platform bridge directly", async () => {
   const source = await readFile(pagePath, "utf8");
 
-  assert.match(source, /type ViewMode = "empty" \| "demo"/);
+  assert.match(source, /pdfSplitService/);
+  assert.match(source, /pickPdfFile/);
+  assert.match(source, /getPdfMetadata/);
+  assert.match(source, /pickOutputDirectory/);
+  assert.match(source, /splitPdf/);
+  assert.doesNotMatch(source, /documentBridge/);
+});
+
+test("pdf split page keeps the current workspace slots while running a live split flow", async () => {
+  const source = await readFile(pagePath, "utf8");
+
+  assert.match(source, /parsePageRangeInput/);
+  assert.match(source, /toSplitRequestPayload/);
+  assert.match(source, /buildPreviewFileName/);
   assert.match(source, /data-slot="dropzone"/);
+  assert.match(source, /data-slot="document-info"/);
   assert.match(source, /data-slot="preview-panel"/);
   assert.match(source, /data-slot="thumbnail-rail"/);
   assert.match(source, /data-slot="ranges-panel"/);
-});
-
-test("pdf split page stays mock-only and avoids real split services", async () => {
-  const source = await readFile(pagePath, "utf8");
-
-  assert.doesNotMatch(source, /pdfSplitService/);
-  assert.doesNotMatch(source, /documentBridge/);
-  assert.match(source, /CampusKit-handbook-split-01\.pdf/);
-  assert.match(source, /data-slot="save-placeholder"/);
+  assert.match(source, /data-slot="save-action"/);
 });

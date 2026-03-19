@@ -1,4 +1,4 @@
-import { getFileStem } from "../../../shared/platform/path";
+import { getFileStem } from "../../../shared/platform/path.ts";
 import type { PageSegment } from "./pageRange";
 
 export type SplitSegmentPayload = {

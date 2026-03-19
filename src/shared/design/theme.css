@@ -331,6 +331,15 @@ button {
   padding: var(--space-5);
 }
 
+.split-setupCopy {
+  margin-bottom: var(--space-4);
+}
+
+.split-configFields {
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+
 .split-flowList {
   margin: var(--space-4) 0 0;
   padding-left: 1.2rem;
@@ -399,6 +408,11 @@ button {
 .split-savePanel .primary-button {
   width: 100%;
   margin-top: var(--space-4);
+}
+
+.split-savePanel .primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .split-previewPanel {
@@ -475,6 +489,15 @@ button {
   grid-template-columns: 64px minmax(0, 1fr);
   gap: var(--space-4);
   align-items: center;
+  width: 100%;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.split-thumbnailCard.is-selected {
+  border-color: rgba(20, 106, 87, 0.24);
+  box-shadow: inset 0 0 0 1px rgba(20, 106, 87, 0.14);
 }
 
 .split-thumbnailFrame {
