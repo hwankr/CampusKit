@@ -1,6 +1,6 @@
 import { getPdfMetadata, pickOutputDirectory, pickPdfFile, splitPdf } from "../../../shared/platform/documentBridge";
 
-export const pdfSplitClient = {
+export const pdfSplitService = {
   getPdfMetadata,
   pickOutputDirectory,
   pickPdfFile,

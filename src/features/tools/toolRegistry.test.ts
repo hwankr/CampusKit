@@ -9,4 +9,21 @@ test("toolRegistry exposes one active tool and three placeholders", () => {
     toolRegistry.map((tool) => tool.id),
     ["pdfSplit", "convert", "merge", "extract"],
   );
+  assert.equal(toolRegistry.find((tool) => tool.status === "active")?.id, "pdfSplit");
+});
+
+test("toolRegistry stays metadata-only", () => {
+  for (const tool of toolRegistry) {
+    assert.deepEqual(Object.keys(tool).sort(), [
+      "descriptionKey",
+      "icon",
+      "id",
+      "navLabelKey",
+      "status",
+      "titleKey",
+    ]);
+    assert.equal("component" in tool, false);
+    assert.equal("render" in tool, false);
+    assert.equal("view" in tool, false);
+  }
 });

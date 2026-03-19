@@ -54,7 +54,7 @@ export function SplitSummaryPanel({
               <div>
                 <div className="preview-label">{fileName}</div>
                 <div className="preview-meta">
-                  {segments[index]?.label} · {segments[index]?.pageCount} {t("summaryPagesUnit")}
+                  {`${segments[index]?.label} / ${segments[index]?.pageCount} ${t("summaryPagesUnit")}`}
                 </div>
               </div>
               <span className="preview-index">{String(index + 1).padStart(2, "0")}</span>
