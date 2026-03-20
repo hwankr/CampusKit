@@ -1,5 +1,5 @@
 :root {
-  --font-body: "IBM Plex Sans", "Noto Sans KR", "Segoe UI Variable Text", "Malgun Gothic", sans-serif;
+  --font-body: "Aptos", "IBM Plex Sans", "Noto Sans KR", "Segoe UI Variable Text", "Malgun Gothic", sans-serif;
   --font-accent: "Iowan Old Style", "Noto Serif KR", Georgia, serif;
 
   --space-1: 4px;
@@ -10,36 +10,41 @@
   --space-6: 24px;
   --space-7: 32px;
   --space-8: 40px;
-  --space-9: 48px;
+  --space-9: 52px;
 
-  --radius-sm: 10px;
-  --radius-md: 16px;
-  --radius-lg: 24px;
-  --radius-xl: 32px;
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 28px;
+  --radius-xl: 36px;
 
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-md: 1rem;
   --text-lg: 1.125rem;
-  --text-xl: 1.5rem;
-  --text-2xl: 2.1rem;
+  --text-xl: 1.55rem;
+  --text-2xl: 2.45rem;
 
-  --surface-canvas: #eef2f3;
-  --surface-shell: rgba(248, 249, 250, 0.82);
-  --surface-panel: rgba(255, 255, 255, 0.86);
-  --surface-panel-strong: #ffffff;
+  --surface-canvas: #ebe6db;
+  --surface-shell: rgba(248, 244, 236, 0.9);
+  --surface-sidebar: rgba(243, 238, 228, 0.88);
+  --surface-panel: rgba(255, 252, 246, 0.88);
+  --surface-panel-strong: #fffdf8;
+  --surface-panel-muted: #f2ede3;
 
-  --ink-strong: #17211f;
-  --ink-body: #42514d;
-  --ink-soft: #6f7c78;
-  --line-soft: rgba(26, 40, 37, 0.08);
+  --ink-strong: #1b211b;
+  --ink-body: #4c554c;
+  --ink-soft: #797e74;
+  --line-soft: rgba(34, 43, 36, 0.09);
+  --line-ghost: rgba(34, 43, 36, 0.14);
 
-  --accent: #146a57;
-  --accent-soft: rgba(20, 106, 87, 0.12);
-  --accent-strong: #0d5344;
-  --danger-soft: rgba(153, 58, 43, 0.14);
+  --accent: #173327;
+  --accent-soft: rgba(23, 51, 39, 0.08);
+  --accent-strong: #0d1f17;
+  --accent-wash: #dce5dc;
+  --danger-soft: rgba(153, 58, 43, 0.13);
   --danger-ink: #8a3b2f;
 
-  --shadow-shell: 0 24px 80px rgba(26, 37, 35, 0.14);
-  --shadow-panel: 0 18px 36px rgba(26, 37, 35, 0.08);
+  --shadow-shell: 0 26px 70px rgba(28, 34, 28, 0.12);
+  --shadow-panel: 0 18px 38px rgba(28, 34, 28, 0.08);
+  --shadow-float: 0 14px 24px rgba(28, 34, 28, 0.06);
 }

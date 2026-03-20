@@ -13,12 +13,17 @@ export function Sidebar({ tools, activeToolId, onSelectTool }: SidebarProps) {
   return (
     <div className="sidebar-panel">
       <div className="sidebar-brand">
-        <div className="sidebar-brandMark">CK</div>
-        <div>
+        <div className="sidebar-brandMark" aria-hidden="true">
+          <img src="/campuskit-mark.svg" alt="" />
+        </div>
+        <div className="sidebar-brandCopy">
+          <div className="sidebar-brandLabel">{t("headerKicker")}</div>
           <div className="sidebar-brandName">{t("appTitle")}</div>
           <div className="sidebar-brandMeta">{t("appTagline")}</div>
         </div>
       </div>
+
+      <div className="sidebar-sectionLabel">{t("sidebarAriaLabel")}</div>
 
       <nav className="sidebar-nav" aria-label={t("sidebarAriaLabel")}>
         {tools.map((tool) => {
@@ -46,7 +51,21 @@ export function Sidebar({ tools, activeToolId, onSelectTool }: SidebarProps) {
         })}
       </nav>
 
-      <div className="sidebar-footnote">{t("sidebarFootnote")}</div>
+      <div className="sidebar-footer">
+        <button type="button" className="sidebar-cta">
+          {t("appTitle")}
+        </button>
+
+        <div className="sidebar-profile">
+          <div className="sidebar-avatar">CK</div>
+          <div className="sidebar-profileCopy">
+            <div className="sidebar-profileName">{t("appTitle")}</div>
+            <div className="sidebar-profileMeta">{t("headerKicker")}</div>
+          </div>
+        </div>
+
+        <div className="sidebar-footnote">{t("sidebarFootnote")}</div>
+      </div>
     </div>
   );
 }

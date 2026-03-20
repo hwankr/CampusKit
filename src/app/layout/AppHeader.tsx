@@ -10,8 +10,13 @@ export function AppHeader({ tool }: AppHeaderProps) {
 
   return (
     <div className="header-bar">
-      <div>
-        <div className="header-kicker">{t("headerKicker")}</div>
+      <div className="header-copy">
+        <div className="header-kickerRow">
+          <div className="header-kicker">{t("headerKicker")}</div>
+          <span className="header-toolMark" aria-hidden="true">
+            {tool.icon}
+          </span>
+        </div>
         <h1 className="header-title">{t(tool.titleKey)}</h1>
         <p className="header-subtitle">{t(tool.descriptionKey)}</p>
       </div>

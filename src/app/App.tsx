@@ -15,7 +15,7 @@ function App() {
       sidebar={
         <Sidebar tools={toolRegistry} activeToolId={activeTool.id} onSelectTool={setActiveToolId} />
       }
-      header={<AppHeader tool={activeTool} />}
+      header={activeTool.id === "pdfSplit" ? null : <AppHeader tool={activeTool} />}
       main={<MainPanel>{renderToolView(activeTool)}</MainPanel>}
     />
   );

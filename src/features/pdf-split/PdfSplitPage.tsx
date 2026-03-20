@@ -243,100 +243,167 @@ export function PdfSplitPage() {
 
   return (
     <section
-      className="split-stage"
+      className="split-workspace"
       data-live-state={document ? "loaded" : pendingInputPath ? "loading" : "empty"}
     >
-      <div className="panel-card split-stageCard">
-        <div className="split-stageIntro">
-          <div>
-            <div className="section-badge">{t("pdfSplitFormBadge")}</div>
-            <h2 className="section-title">{t("pdfSplitFormTitle")}</h2>
-            <p className="section-copy">{t("pdfSplitFormBody")}</p>
+      <div className="split-toolbar">
+        <div className="split-toolbarMain">
+          <div className="split-toolbarTitleRow">
+            <span className="split-toolbarMark">SP</span>
+            <h2 className="split-toolbarTitle">{t("pdfSplitTitle")}</h2>
           </div>
-          <div className="split-inlineNotice">{t("pdfSplitWorkspaceNotice")}</div>
+          <div className="split-toolbarChips" data-slot="document-info">
+            <span className="split-toolbarChip">{documentName || t("summaryPendingValue")}</span>
+            <span className="split-toolbarChip">
+              {pageCount !== null ? `${pageCount} ${t("summaryPagesUnit")}` : t("summaryPendingValue")}
+            </span>
+          </div>
         </div>
 
-        <div className="split-stageGrid">
-          <div className="split-dropzone" data-slot="dropzone" data-empty={!displayedInputPath}>
-            <div className="split-dropzoneBadge">PDF</div>
-            <h3 className="split-panelTitle">{t("inputFileLabel")}</h3>
-            <p className="split-panelCopy">{t("pdfSplitIntakeBody")}</p>
+        <div className="split-toolbarActions">
+          <button type="button" className="split-toolbarUtility">
+            Share
+          </button>
+          <button type="button" className="split-toolbarUtility">
+            More
+          </button>
+          <div data-slot="save-action">
+            <button
+              type="button"
+              className="primary-button split-toolbarSave"
+              disabled={!canSubmit}
+              onClick={handleSubmit}
+            >
+              {isSplitRunning ? t("splitRunningAction") : t("splitSubmitAction")}
+            </button>
+          </div>
+        </div>
+      </div>
 
-            <div className="split-stageActions">
-              <button type="button" className="primary-button" onClick={handleChooseInput} disabled={isBusy}>
+      <div className="split-stage">
+        <div className="split-rail">
+          <section className="split-region split-guidanceRegion">
+            <div className="split-regionLabel">{t("pdfSplitSetupTitle")}</div>
+            <div className="split-guidanceNote">
+              <p className="split-panelCopy">{t("pdfSplitSetupBody")}</p>
+              <p className="split-guidanceEmphasis">{t("pdfSplitFlowRange")}</p>
+            </div>
+          </section>
+
+          <section className="split-region split-intakeRegion" data-slot="dropzone" data-empty={!displayedInputPath}>
+            <div className="split-regionLabel">{t("inputFileLabel")}</div>
+            <div className="split-intakeWell">
+              <div className="split-intakeBadge">PDF</div>
+              <p className="split-panelCopy">{t("pdfSplitIntakeBody")}</p>
+              <button type="button" className="ghost-button split-intakeButton" onClick={handleChooseInput} disabled={isBusy}>
                 {t("browseFileAction")}
+              </button>
+              <div className="split-intakeMeta">
+                <strong>{documentName || t("summaryPendingValue")}</strong>
+                <span>{displayedInputPath ? getFileName(displayedInputPath) : t("summaryPendingValue")}</span>
+              </div>
+              {displayedInputPath ? <p className="split-documentPath">{displayedInputPath}</p> : null}
+            </div>
+          </section>
+
+          <section
+            className="split-region split-rangesRegion"
+            data-slot="ranges-panel"
+            data-empty={rangeEntries.length === 0}
+          >
+            <div className="split-regionHeader">
+              <div className="split-regionLabel">{t("pdfSplitRangesTitle")}</div>
+              <button
+                type="button"
+                className="split-addAction"
+                onClick={handleAddSplitPoint}
+                disabled={pageCount === null || isBusy}
+              >
+                +
               </button>
             </div>
 
-            <div className="split-dropzoneMeta">
-              <span>{t("inputFileLabel")}</span>
-              <strong>{documentName || t("summaryPendingValue")}</strong>
+            <div className="split-rangeComposer">
+              <input
+                className="field-input"
+                value={splitPointInput}
+                onChange={(event) => handleSplitPointInputChange(event.currentTarget.value)}
+                onKeyDown={(event) => handleSplitPointInputKeyDown(event.key)}
+                placeholder={t("pageRangePlaceholder")}
+                disabled={pageCount === null || isBusy}
+              />
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleAddSplitPoint}
+                disabled={pageCount === null || isBusy}
+              >
+                {t("splitPointAddAction")}
+              </button>
             </div>
 
-            {displayedInputPath ? <p className="split-documentPath">{displayedInputPath}</p> : null}
-          </div>
-
-          <div className="split-flowCard" data-slot="setup-panel">
-            <span className="field-label">{t("pdfSplitSetupTitle")}</span>
-            <p className="split-panelCopy split-setupCopy">{t("pdfSplitSetupBody")}</p>
-
-            <div className="field-grid split-configFields">
-              <label className="field-block">
-                <span className="field-label">{t("outputDirLabel")}</span>
-                <div className="field-row">
-                  <input
-                    className="field-input"
-                    value={outputDir}
-                    readOnly
-                    placeholder={t("outputDirPlaceholder")}
-                  />
-                  <button type="button" className="ghost-button" onClick={handleChooseOutput} disabled={isBusy}>
-                    {t("browseFolderAction")}
-                  </button>
-                </div>
-              </label>
-
-              <div className="field-block">
-                <span className="field-label">{t("pageRangeLabel")}</span>
-                <div className="field-row">
-                  <input
-                    className="field-input"
-                    value={splitPointInput}
-                    onChange={(event) => handleSplitPointInputChange(event.currentTarget.value)}
-                    onKeyDown={(event) => handleSplitPointInputKeyDown(event.key)}
-                    placeholder={t("pageRangePlaceholder")}
-                    disabled={pageCount === null || isBusy}
-                  />
+            {splitPoints.length > 0 ? (
+              <div className="split-pointStrip">
+                {splitPoints.map((splitPoint) => (
                   <button
+                    key={splitPoint}
                     type="button"
-                    className="ghost-button"
-                    onClick={handleAddSplitPoint}
-                    disabled={pageCount === null || isBusy}
+                    className="split-pointToken"
+                    onClick={() => handleRemoveSplitPoint(splitPoint)}
+                    disabled={isBusy}
                   >
-                    {t("splitPointAddAction")}
+                    <span>{`${splitPoint}${t("splitPointAfterSuffix")}`}</span>
+                    <span className="split-pointTokenAction">{t("splitPointRemoveAction")}</span>
                   </button>
-                </div>
+                ))}
+              </div>
+            ) : null}
 
-                <div className="split-pointList" data-empty={splitPoints.length === 0}>
-                  {splitPoints.length > 0 ? (
-                    splitPoints.map((splitPoint) => (
-                      <div key={splitPoint} className="split-pointChip">
-                        <span>{`${splitPoint}${t("splitPointAfterSuffix")}`}</span>
-                        <button
-                          type="button"
-                          className="ghost-button split-pointRemove"
-                          onClick={() => handleRemoveSplitPoint(splitPoint)}
-                          disabled={isBusy}
-                        >
-                          {t("splitPointRemoveAction")}
-                        </button>
-                      </div>
-                    ))
-                  ) : (
-                    <p className="split-emptyCopy">{t("splitPointEmpty")}</p>
-                  )}
+            {rangeEntries.length > 0 ? (
+              <div className="split-rangeList">
+                {rangeEntries.map((entry, index) => (
+                  <button
+                    key={`${entry.segment.label}-${index}`}
+                    type="button"
+                    className={`split-rangeRow${selectedRangeIndex === index ? " is-selected" : ""}`}
+                    onClick={() => setSelectedRangeIndex(index)}
+                  >
+                    <span className="split-rangeDot" />
+                    <span className="split-rangeRowLabel">{entry.segment.label}</span>
+                    <span className="split-rangeRowMeta">{entry.fileName}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="split-rangeList">
+                <div className="split-rangeRow is-ghost">
+                  <span className="split-rangeDot" />
+                  <span className="split-rangeRowLabel">Pages 1 - 10</span>
+                </div>
+                <div className="split-rangeRow is-ghost">
+                  <span className="split-rangeDot" />
+                  <span className="split-rangeRowLabel">Pages 11 - 20</span>
+                </div>
+                <div className="split-rangeRow is-ghost">
+                  <span className="split-rangeDot" />
+                  <span className="split-rangeRowLabel">Custom Range...</span>
                 </div>
               </div>
+            )}
+          </section>
+
+          <section className="split-region split-outputRegion" data-slot="setup-panel">
+            <div className="split-regionLabel">{t("outputDirLabel")}</div>
+            <div className="split-outputField">
+              <input
+                className="field-input"
+                value={outputDir}
+                readOnly
+                placeholder={t("outputDirPlaceholder")}
+              />
+              <button type="button" className="ghost-button" onClick={handleChooseOutput} disabled={isBusy}>
+                {t("browseFolderAction")}
+              </button>
             </div>
 
             {validationMessage ? <div className="validation-banner">{validationMessage}</div> : null}
@@ -345,159 +412,64 @@ export function PdfSplitPage() {
               <strong>{status.message}</strong>
               {status.detail ? <p className="status-detail">{status.detail}</p> : null}
             </div>
-
-            <ol className="split-flowList">
-              <li>{t("pdfSplitFlowChoose")}</li>
-              <li>{t("pdfSplitFlowInspect")}</li>
-              <li>{t("pdfSplitFlowRange")}</li>
-              <li>{t("pdfSplitFlowSave")}</li>
-            </ol>
-          </div>
+          </section>
         </div>
-      </div>
 
-      <div className="split-workspaceGrid">
-        <div className="split-sidebarColumn">
-          <section
-            className="panel-card split-infoPanel"
-            data-slot="document-info"
-            data-empty={!displayedInputPath}
-          >
-            <div className="section-badge">{t("summaryDocumentLabel")}</div>
-            <h3 className="split-panelTitle">{t("pdfSplitDocTitle")}</h3>
-
-            {displayedInputPath ? (
-              <>
-                <strong className="split-documentName">{documentName || getFileName(displayedInputPath)}</strong>
-                <p className="split-documentPath">{displayedInputPath}</p>
-                <div className="split-metricGrid">
-                  <div className="metric-card">
-                    <span className="metric-label">{t("summaryPageCountLabel")}</span>
-                    <strong>{pageCount ?? t("summaryPendingValue")}</strong>
-                  </div>
-                  <div className="metric-card">
-                    <span className="metric-label">{t("summaryOutputCountLabel")}</span>
-                    <strong>{segments.length}</strong>
-                  </div>
-                  <div className="metric-card">
-                    <span className="metric-label">{t("pdfSplitDocFocusLabel")}</span>
-                    <strong>{selectedEntry ? selectedEntry.segment.label : t("summaryPendingValue")}</strong>
-                  </div>
-                  <div className="metric-card">
-                    <span className="metric-label">{t("outputDirLabel")}</span>
-                    <strong>{outputDir || t("summaryPendingValue")}</strong>
+        <div className="split-canvasRegion">
+          <section className="split-previewField" data-slot="preview-panel" data-empty={!selectedEntry}>
+            <div className="split-previewCanvas">
+              <article className="split-manuscript">
+                <div className="split-manuscriptFolio">Folio 042</div>
+                <h3 className="split-manuscriptTitle">
+                  {selectedEntry ? selectedEntry.fileName : t("pdfSplitPreviewEmpty")}
+                </h3>
+                <div className="split-manuscriptBody">
+                  <p>
+                    {selectedEntry
+                      ? `${selectedEntry.segment.label} / ${selectedEntry.segment.pageCount} ${t("summaryPagesUnit")}`
+                      : t("pdfSplitPreviewHintEmpty")}
+                  </p>
+                  <p>{displayedInputPath || t("pdfSplitIntakeBody")}</p>
+                  <div className="split-manuscriptQuote">
+                    {selectedEntry ? selectedEntry.segment.label : t("pdfSplitPreviewCaption")}
                   </div>
                 </div>
-              </>
-            ) : (
-              <p className="split-emptyCopy">{t("pdfSplitDocEmpty")}</p>
-            )}
+              </article>
+            </div>
           </section>
 
-          <section className="panel-card split-rangesPanel" data-slot="ranges-panel" data-empty={rangeEntries.length === 0}>
-            <div className="section-badge">{t("pdfSplitRangesTitle")}</div>
-            <h3 className="split-panelTitle">{t("pdfSplitRangesTitle")}</h3>
-
+          <section className="split-thumbnailShelf" data-slot="thumbnail-rail" data-empty={rangeEntries.length === 0}>
             {rangeEntries.length > 0 ? (
-              <div className="split-rangeList">
+              <div className="split-thumbnailList">
                 {rangeEntries.map((entry, index) => (
-                  <article key={`${entry.segment.label}-${index}`} className="split-rangeCard">
-                    <div className="split-rangeHeader">
-                      <span className="split-rangeIndex">{String(index + 1).padStart(2, "0")}</span>
-                      <span className="split-rangePill">{entry.segment.label}</span>
+                  <button
+                    key={`${entry.segment.label}-thumb`}
+                    type="button"
+                    className={`split-thumbnailCard${selectedRangeIndex === index ? " is-selected" : ""}`}
+                    onClick={() => setSelectedRangeIndex(index)}
+                  >
+                    <div className="split-thumbnailFrame">
+                      {index === 0 ? entry.fileName.slice(0, 8) : null}
                     </div>
-                    <strong className="preview-label">{entry.fileName}</strong>
-                    <div className="preview-meta">
-                      {`${entry.segment.pageCount} ${t("summaryPagesUnit")} / ${
-                        entry.outputPath ? t("pdfSplitSavedOutputLabel") : t("pdfSplitExpectedOutputLabel")
-                      }`}
-                    </div>
-                    <p className="split-rangeNote">
-                      {entry.outputPath ?? t("pdfSplitPreviewHintEmpty")}
-                    </p>
-                  </article>
+                    <div className="split-thumbnailNumber">{String(index + 1)}</div>
+                  </button>
                 ))}
               </div>
             ) : (
-              <p className="split-emptyCopy">{t("pdfSplitRangesEmpty")}</p>
-            )}
-          </section>
-
-          <section className="panel-card split-savePanel" data-slot="save-action">
-            <div className="split-saveHeader">
-              <div>
-                <div className="section-badge">{t("pdfSplitSaveTitle")}</div>
-                <h3 className="split-panelTitle">{t("pdfSplitSaveTitle")}</h3>
+              <div className="split-thumbnailList">
+                {Array.from({ length: 8 }, (_, index) => (
+                  <div
+                    key={`placeholder-${index + 1}`}
+                    className={`split-thumbnailCard${index === 0 ? " is-selected" : ""}`}
+                  >
+                    <div className="split-thumbnailFrame">{index === 0 ? documentName || "Page" : null}</div>
+                    <div className="split-thumbnailNumber">{String(index + 1)}</div>
+                  </div>
+                ))}
               </div>
-              <span className="split-mockChip">{t("pdfSplitMockChip")}</span>
-            </div>
-            <p className="split-panelCopy">{t("pdfSplitSaveBody")}</p>
-            <button
-              type="button"
-              className="primary-button"
-              disabled={!canSubmit}
-              onClick={handleSubmit}
-            >
-              {isSplitRunning ? t("splitRunningAction") : t("splitSubmitAction")}
-            </button>
+            )}
           </section>
         </div>
-
-        <section className="panel-card split-previewPanel" data-slot="preview-panel" data-empty={!selectedEntry}>
-          <div className="split-previewHeader">
-            <div>
-              <div className="section-badge">{t("pdfSplitPreviewTitle")}</div>
-              <h3 className="split-panelTitle">{t("pdfSplitPreviewTitle")}</h3>
-            </div>
-            {selectedEntry ? <span className="split-mockChip">{t("pdfSplitPreviewCaption")}</span> : null}
-          </div>
-
-          <div className="split-previewCanvas">
-            {selectedEntry ? (
-              <>
-                <div className="split-previewPage">
-                  <span className="split-previewPageNumber">{selectedEntry.segment.start}</span>
-                  <span className="split-previewPageLabel">{selectedEntry.fileName}</span>
-                </div>
-                <div className="split-previewOverlay">
-                  <strong>{selectedEntry.segment.label}</strong>
-                  <span>{`${selectedEntry.segment.pageCount} ${t("summaryPagesUnit")}`}</span>
-                </div>
-              </>
-            ) : (
-              <div className="split-previewEmpty">
-                <strong>{t("pdfSplitPreviewEmpty")}</strong>
-                <p>{t("pdfSplitPreviewHintEmpty")}</p>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <section className="panel-card secondary-panel split-thumbnailPanel" data-slot="thumbnail-rail" data-empty={rangeEntries.length === 0}>
-          <div className="section-badge">{t("pdfSplitThumbTitle")}</div>
-          <h3 className="split-panelTitle">{t("pdfSplitThumbTitle")}</h3>
-
-          {rangeEntries.length > 0 ? (
-            <div className="split-thumbnailList">
-              {rangeEntries.map((entry, index) => (
-                <button
-                  key={`${entry.segment.label}-thumb`}
-                  type="button"
-                  className={`split-thumbnailCard${selectedRangeIndex === index ? " is-selected" : ""}`}
-                  onClick={() => setSelectedRangeIndex(index)}
-                >
-                  <div className="split-thumbnailFrame">{String(entry.segment.start).padStart(2, "0")}</div>
-                  <div>
-                    <strong>{entry.segment.label}</strong>
-                    <div className="preview-meta">{entry.fileName}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="split-emptyCopy">{t("pdfSplitThumbEmpty")}</p>
-          )}
-        </section>
       </div>
     </section>
   );
