@@ -14,6 +14,7 @@ dist-ssr
 src-tauri/target
 *.local
 .omx/
+.omc/
 
 # Editor directories and files
 .vscode/*
