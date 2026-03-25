@@ -1,14 +1,18 @@
 mod commands;
 mod platform;
 
-use commands::pdf_split::{get_pdf_metadata, split_pdf};
+use commands::pdf_split::{get_pdf_metadata, render_pdf_pages, split_pdf};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![get_pdf_metadata, split_pdf])
+        .invoke_handler(tauri::generate_handler![
+            get_pdf_metadata,
+            render_pdf_pages,
+            split_pdf
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

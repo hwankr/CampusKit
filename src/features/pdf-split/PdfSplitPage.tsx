@@ -1,16 +1,29 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { MessageKey } from "../../shared/i18n/messages/ko";
 import { useI18n } from "../../shared/i18n/useI18n";
 import { getFileName } from "../../shared/platform/path";
+import { getPendingPdfFileName, type PdfDocumentMetadata } from "./model/pdfDocument";
 import {
   addSplitPoint,
   buildPageSegmentsFromSplitPoints,
   removeSplitPoint,
   type PageSegment,
 } from "./model/pageRange";
-import { getPendingPdfFileName, type PdfDocumentMetadata } from "./model/pdfDocument";
+import {
+  buildPdfPageItems,
+  buildPlannedPreviewRequests,
+  buildPreviewCacheKey,
+  findPageSegmentForPage,
+  getMissingPreviewPageNumbers,
+  isPageInSegment,
+  syncSelectedPageNumber,
+} from "./model/previewPlan";
 import { buildPreviewFileName, deriveSplitBaseName, toSplitRequestPayload } from "./model/splitJob";
-import { pdfSplitService } from "./service/pdfSplitService";
+import {
+  pdfSplitService,
+  type PdfPreviewImagePayload,
+  type RenderPdfPagesRequest,
+} from "./service/pdfSplitService";
 
 type StatusState =
   | { tone: "idle"; message: string; detail?: string }
@@ -20,9 +33,12 @@ type StatusState =
 
 type RangeEntry = {
   fileName: string;
-  outputPath: string | null;
   segment: PageSegment;
 };
+
+function toPreviewDataUri(payload: PdfPreviewImagePayload | null) {
+  return payload ? `data:${payload.mimeType};base64,${payload.base64}` : null;
+}
 
 export function PdfSplitPage() {
   const { t } = useI18n();
@@ -34,7 +50,13 @@ export function PdfSplitPage() {
   const [segments, setSegments] = useState<PageSegment[]>([]);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [outputFiles, setOutputFiles] = useState<string[]>([]);
-  const [selectedRangeIndex, setSelectedRangeIndex] = useState(0);
+  const [selectedPageNumber, setSelectedPageNumber] = useState(1);
+  const [previewCache, setPreviewCache] = useState<Record<string, PdfPreviewImagePayload>>({});
+  const [previewLoadingKeys, setPreviewLoadingKeys] = useState<string[]>([]);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const previewCacheRef = useRef<Record<string, PdfPreviewImagePayload>>({});
+  const previewLoadingKeysRef = useRef<string[]>([]);
+  const previewSessionRef = useRef(0);
   const [status, setStatus] = useState<StatusState>({
     tone: "idle",
     message: t("statusAwaitingSetup"),
@@ -79,22 +101,33 @@ export function PdfSplitPage() {
     if (pageCount === null) {
       setSegments([]);
       setValidationMessage(null);
-      setSelectedRangeIndex(0);
+      setSelectedPageNumber(syncSelectedPageNumber(null, 1, true));
+      return;
+    }
+
+    if (splitPoints.length === 0) {
+      setSegments([]);
+      setValidationMessage(null);
+      setSelectedPageNumber((currentPageNumber) =>
+        syncSelectedPageNumber(pageCount, currentPageNumber),
+      );
       return;
     }
 
     try {
       const nextSegments = buildPageSegmentsFromSplitPoints(splitPoints, pageCount);
       setSegments(nextSegments);
-      setSelectedRangeIndex((currentIndex) =>
-        Math.min(currentIndex, Math.max(nextSegments.length - 1, 0)),
+      setSelectedPageNumber((currentPageNumber) =>
+        syncSelectedPageNumber(pageCount, currentPageNumber),
       );
     } catch (error) {
       const errorKey: MessageKey =
         error instanceof Error ? (error.message as MessageKey) : "statusUnknownError";
       setSegments([]);
       setValidationMessage(t(errorKey));
-      setSelectedRangeIndex(0);
+      setSelectedPageNumber((currentPageNumber) =>
+        syncSelectedPageNumber(pageCount, currentPageNumber),
+      );
     }
   }, [pageCount, splitPoints, t]);
 
@@ -102,13 +135,37 @@ export function PdfSplitPage() {
     buildPreviewFileName(deriveSplitBaseName(documentName || inputPath), segment, index),
   );
 
-  const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
-    segment,
-    fileName: outputFiles[index] ? getFileName(outputFiles[index]) : expectedFiles[index],
-    outputPath: outputFiles[index] ?? null,
-  }));
+const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
+  segment,
+  fileName: outputFiles[index] ? getFileName(outputFiles[index]) : expectedFiles[index],
+}));
 
-  const selectedEntry = rangeEntries[selectedRangeIndex] ?? null;
+  const pageItems = pageCount !== null ? buildPdfPageItems(pageCount) : [];
+  const previewRequestPlan =
+    pageCount !== null && inputPath
+      ? buildPlannedPreviewRequests(inputPath, pageCount, selectedPageNumber)
+      : [];
+  const thumbnailRequest = previewRequestPlan.find((request) => request.sizePreset === "thumbnail") ?? null;
+  const thumbnailWindowPages = new Set(thumbnailRequest?.pageNumbers ?? []);
+  const previewRequestOrder = previewRequestPlan.map((request) => request.sizePreset).join(",");
+  const previewLoadingKeySet = new Set(previewLoadingKeys);
+  const selectedSegment = findPageSegmentForPage(segments, selectedPageNumber);
+  const focusPreviewCacheKey =
+    inputPath && pageCount !== null
+      ? buildPreviewCacheKey(inputPath, "focus", selectedPageNumber)
+      : null;
+  const thumbnailPreviewCacheKey =
+    inputPath && pageCount !== null
+      ? buildPreviewCacheKey(inputPath, "thumbnail", selectedPageNumber)
+      : null;
+  const selectedPreviewImage =
+    (focusPreviewCacheKey ? previewCache[focusPreviewCacheKey] : null) ??
+    (thumbnailPreviewCacheKey ? previewCache[thumbnailPreviewCacheKey] : null) ??
+    null;
+  const selectedPreviewLoading =
+    (focusPreviewCacheKey ? previewLoadingKeySet.has(focusPreviewCacheKey) : false) ||
+    (thumbnailPreviewCacheKey ? previewLoadingKeySet.has(thumbnailPreviewCacheKey) : false);
+  const selectedPreviewDataUri = toPreviewDataUri(selectedPreviewImage);
 
   const canSubmit =
     Boolean(inputPath) &&
@@ -118,6 +175,98 @@ export function PdfSplitPage() {
     segments.length > 0 &&
     !validationMessage &&
     !isBusy;
+
+  function resetPreviewState() {
+    previewSessionRef.current += 1;
+    previewCacheRef.current = {};
+    previewLoadingKeysRef.current = [];
+    setPreviewCache({});
+    setPreviewLoadingKeys([]);
+    setPreviewError(null);
+  }
+
+  function addPreviewLoadingKeys(keys: string[]) {
+    previewLoadingKeysRef.current = Array.from(
+      new Set([...previewLoadingKeysRef.current, ...keys]),
+    );
+    setPreviewLoadingKeys(previewLoadingKeysRef.current);
+  }
+
+  function removePreviewLoadingKeys(keys: string[]) {
+    previewLoadingKeysRef.current = previewLoadingKeysRef.current.filter(
+      (cacheKey) => !keys.includes(cacheKey),
+    );
+    setPreviewLoadingKeys(previewLoadingKeysRef.current);
+  }
+
+  useEffect(() => {
+    if (!inputPath || pageCount === null || previewRequestPlan.length === 0) {
+      return;
+    }
+    const previewSession = previewSessionRef.current;
+
+    async function loadPreviewBatch(request: RenderPdfPagesRequest) {
+      const missingPageNumbers = getMissingPreviewPageNumbers(
+        inputPath,
+        request.sizePreset,
+        request.pageNumbers,
+        previewCacheRef.current,
+        previewLoadingKeysRef.current,
+      );
+
+      if (missingPageNumbers.length === 0) {
+        return;
+      }
+
+      const loadingKeys = missingPageNumbers.map((pageNumber: number) =>
+        buildPreviewCacheKey(inputPath, request.sizePreset, pageNumber),
+      );
+
+      addPreviewLoadingKeys(loadingKeys);
+
+      try {
+        const response = await pdfSplitService.renderPdfPages({
+          ...request,
+          pageNumbers: missingPageNumbers,
+        });
+
+        if (previewSession !== previewSessionRef.current) {
+          return;
+        }
+
+        setPreviewCache((current) => {
+          const nextCache = { ...current };
+
+          for (const [pageNumberKey, payload] of Object.entries(
+            response,
+          ) as [string, PdfPreviewImagePayload][]) {
+            const pageNumber = Number(pageNumberKey);
+
+            nextCache[buildPreviewCacheKey(inputPath, request.sizePreset, pageNumber)] = payload;
+          }
+
+          previewCacheRef.current = nextCache;
+          return nextCache;
+        });
+      } catch (error) {
+        if (previewSession === previewSessionRef.current) {
+          setPreviewError(describeError(error));
+        }
+      } finally {
+        removePreviewLoadingKeys(loadingKeys);
+      }
+    }
+
+    async function loadPreviews() {
+      setPreviewError(null);
+
+      for (const request of previewRequestPlan) {
+        await loadPreviewBatch(request);
+      }
+    }
+
+    void loadPreviews();
+  }, [inputPath, pageCount, previewRequestPlan, selectedPageNumber]);
 
   async function handleChooseInput() {
     const selectedPath = await pdfSplitService.pickPdfFile();
@@ -141,8 +290,9 @@ export function PdfSplitPage() {
       setSplitPoints([]);
       setSegments([]);
       setOutputFiles([]);
+      resetPreviewState();
       setValidationMessage(null);
-      setSelectedRangeIndex(0);
+      setSelectedPageNumber(syncSelectedPageNumber(metadata.pageCount, 1, true));
       setStatus(buildIdleStatus(metadata.pageCount));
     } catch {
       setPendingInputPath(null);
@@ -362,16 +512,14 @@ export function PdfSplitPage() {
             {rangeEntries.length > 0 ? (
               <div className="split-rangeList">
                 {rangeEntries.map((entry, index) => (
-                  <button
+                  <div
                     key={`${entry.segment.label}-${index}`}
-                    type="button"
-                    className={`split-rangeRow${selectedRangeIndex === index ? " is-selected" : ""}`}
-                    onClick={() => setSelectedRangeIndex(index)}
+                    className={`split-rangeRow${isPageInSegment(entry.segment, selectedPageNumber) ? " is-selected" : ""}`}
                   >
                     <span className="split-rangeDot" />
                     <span className="split-rangeRowLabel">{entry.segment.label}</span>
                     <span className="split-rangeRowMeta">{entry.fileName}</span>
-                  </button>
+                  </div>
                 ))}
               </div>
             ) : (
@@ -416,44 +564,110 @@ export function PdfSplitPage() {
         </div>
 
         <div className="split-canvasRegion">
-          <section className="split-previewField" data-slot="preview-panel" data-empty={!selectedEntry}>
+          <section
+            className="split-previewField"
+            data-slot="preview-panel"
+            data-empty={pageCount === null}
+            data-preview-request-order={previewRequestOrder || undefined}
+          >
             <div className="split-previewCanvas">
               <article className="split-manuscript">
-                <div className="split-manuscriptFolio">Folio 042</div>
+                <div className="split-manuscriptFolio">
+                  {`Folio ${String(selectedPageNumber).padStart(3, "0")}`}
+                </div>
+                <div
+                  className="split-manuscriptImageFrame"
+                  data-loading={selectedPreviewLoading}
+                >
+                  {selectedPreviewDataUri ? (
+                    <img
+                      className="split-manuscriptImage"
+                      src={selectedPreviewDataUri}
+                      alt={`Preview of page ${selectedPageNumber}`}
+                    />
+                  ) : (
+                    <div className="split-manuscriptPlaceholder">
+                      <strong>{pageCount !== null ? `Page ${selectedPageNumber}` : t("pdfSplitPreviewEmpty")}</strong>
+                      <span>
+                        {selectedPreviewLoading ? t("statusLoadingDocument") : t("pdfSplitPreviewHintEmpty")}
+                      </span>
+                    </div>
+                  )}
+                </div>
                 <h3 className="split-manuscriptTitle">
-                  {selectedEntry ? selectedEntry.fileName : t("pdfSplitPreviewEmpty")}
+                  {pageCount !== null
+                    ? `${documentName || t("pdfSplitPreviewEmpty")} · Page ${selectedPageNumber}`
+                    : t("pdfSplitPreviewEmpty")}
                 </h3>
                 <div className="split-manuscriptBody">
                   <p>
-                    {selectedEntry
-                      ? `${selectedEntry.segment.label} / ${selectedEntry.segment.pageCount} ${t("summaryPagesUnit")}`
+                    {pageCount !== null
+                      ? `${selectedPageNumber} / ${pageCount} ${t("summaryPagesUnit")}`
                       : t("pdfSplitPreviewHintEmpty")}
                   </p>
-                  <p>{displayedInputPath || t("pdfSplitIntakeBody")}</p>
+                  <p>
+                    {selectedSegment
+                      ? `${selectedSegment.label} / ${selectedSegment.pageCount} ${t("summaryPagesUnit")}`
+                      : displayedInputPath || t("statusReadyForRange")}
+                  </p>
                   <div className="split-manuscriptQuote">
-                    {selectedEntry ? selectedEntry.segment.label : t("pdfSplitPreviewCaption")}
+                    {selectedSegment ? selectedSegment.label : t("pdfSplitPreviewCaption")}
                   </div>
+                  {previewError ? <div className="validation-banner">{previewError}</div> : null}
                 </div>
               </article>
             </div>
           </section>
 
-          <section className="split-thumbnailShelf" data-slot="thumbnail-rail" data-empty={rangeEntries.length === 0}>
-            {rangeEntries.length > 0 ? (
+          <section
+            className="split-thumbnailShelf"
+            data-slot="thumbnail-rail"
+            data-empty={pageItems.length === 0}
+          >
+            {pageItems.length > 0 ? (
               <div className="split-thumbnailList">
-                {rangeEntries.map((entry, index) => (
-                  <button
-                    key={`${entry.segment.label}-thumb`}
-                    type="button"
-                    className={`split-thumbnailCard${selectedRangeIndex === index ? " is-selected" : ""}`}
-                    onClick={() => setSelectedRangeIndex(index)}
-                  >
-                    <div className="split-thumbnailFrame">
-                      {index === 0 ? entry.fileName.slice(0, 8) : null}
-                    </div>
-                    <div className="split-thumbnailNumber">{String(index + 1)}</div>
-                  </button>
-                ))}
+                {pageItems.map((pageItem) => {
+                  const thumbnailCacheKey =
+                    inputPath && pageCount !== null
+                      ? buildPreviewCacheKey(inputPath, "thumbnail", pageItem.pageNumber)
+                      : null;
+                  const thumbnailImage = thumbnailCacheKey ? previewCache[thumbnailCacheKey] ?? null : null;
+                  const thumbnailLoading = thumbnailCacheKey
+                    ? previewLoadingKeySet.has(thumbnailCacheKey)
+                    : false;
+                  const thumbnailDataUri = toPreviewDataUri(thumbnailImage);
+
+                  return (
+                    <button
+                      key={pageItem.key}
+                      type="button"
+                      className={`split-thumbnailCard${selectedPageNumber === pageItem.pageNumber ? " is-selected" : ""}`}
+                      onClick={() => setSelectedPageNumber(pageItem.pageNumber)}
+                      data-windowed={thumbnailWindowPages.has(pageItem.pageNumber)}
+                    >
+                      <div
+                        className="split-thumbnailFrame"
+                        data-loading={thumbnailLoading}
+                        data-windowed={thumbnailWindowPages.has(pageItem.pageNumber)}
+                      >
+                        {thumbnailDataUri ? (
+                          <img
+                            className="split-thumbnailImage"
+                            src={thumbnailDataUri}
+                            alt={`Thumbnail of page ${pageItem.pageNumber}`}
+                          />
+                        ) : (
+                          <span className="split-thumbnailState">
+                            {thumbnailWindowPages.has(pageItem.pageNumber)
+                              ? String(pageItem.pageNumber).padStart(2, "0")
+                              : ""}
+                          </span>
+                        )}
+                      </div>
+                      <div className="split-thumbnailNumber">{String(pageItem.pageNumber)}</div>
+                    </button>
+                  );
+                })}
               </div>
             ) : (
               <div className="split-thumbnailList">

@@ -95,16 +95,16 @@ export const koMessages = {
     "PDF가 불러와지면 여기에 문서 정보가 보인다. empty state에서도 자리를 보여줘 다음 단계가 직관적으로 이해되도록 한다.",
   pdfSplitDocFocusLabel: "집중 범위",
   pdfSplitThumbTitle: "썸네일 레일",
-  pdfSplitThumbEmpty: "PDF가 불러와지면 여기에 썸네일 placeholder가 들어온다.",
+  pdfSplitThumbEmpty: "PDF를 불러오면 여기에 실제 페이지 썸네일이 보인다.",
   pdfSplitPreviewTitle: "큰 미리보기",
   pdfSplitPreviewEmpty: "집중한 페이지 미리보기가 여기에 보인다.",
-  pdfSplitPreviewCaption: "선택된 분할 범위 미리보기",
+  pdfSplitPreviewCaption: "선택한 페이지 미리보기",
   pdfSplitRangesTitle: "분할 결과",
   pdfSplitRangesEmpty:
     "분할점을 지정하면 여기에 계산된 결과 범위와 예상 파일이 표시된다.",
   pdfSplitSaveTitle: "저장 영역",
   pdfSplitSaveBody:
-    "저장은 이미 있는 split backend를 실행한다. 썸네일과 큰 미리보기 패널은 앞으로의 PDF 렌더링 자리를 유지한다.",
+    "저장은 기존 split backend를 실행한다. 썸네일 레일과 큰 미리보기 패널은 현재 불러온 PDF 페이지를 실제로 렌더링한다.",
   pdfSplitSaveAction: "분할 파일 저장",
   pdfSplitMockChip: "Live split",
   pdfSplitIntakeBody:
@@ -115,7 +115,7 @@ export const koMessages = {
   pdfSplitExpectedOutputLabel: "예상 결과",
   pdfSplitSavedOutputLabel: "저장 완료",
   pdfSplitPreviewHintEmpty:
-    "PDF를 불러오고 범위를 정하면, 선택된 결과 묶음을 이 placeholder 패널이 따라가도록 한다.",
+    "PDF를 불러오면 분할 지점을 넣기 전과 후 모두 선택한 페이지 미리보기가 여기에 보인다.",
   pdfSplitWorkspaceNotice: "실제 파일/저장 흐름 연결됨",
 } as const;
 

@@ -1,9 +1,16 @@
 use crate::platform::pathing::{build_output_filename, default_base_name_from_path};
+use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+use base64::Engine;
+use image::ImageFormat;
 use lopdf::Document;
+use pdfium_render::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+use std::ffi::OsString;
 use std::fs;
+use std::io::Cursor;
 use std::path::{Path, PathBuf};
+use tauri::{AppHandle, Manager};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,6 +46,32 @@ pub struct SplitPdfRequest {
 pub struct SplitPdfResponse {
     output_files: Vec<String>,
 }
+
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PreviewSizePreset {
+    Thumbnail,
+    Focus,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderPdfPagesRequest {
+    input_path: String,
+    page_numbers: Vec<usize>,
+    size_preset: PreviewSizePreset,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderedPageImagePayload {
+    mime_type: String,
+    base64: String,
+    width: u32,
+    height: u32,
+}
+
+pub type RenderPdfPagesResponse = BTreeMap<String, RenderedPageImagePayload>;
 
 #[tauri::command]
 pub fn get_pdf_metadata(request: PdfMetadataRequest) -> Result<PdfMetadataResponse, String> {
@@ -84,6 +117,190 @@ pub fn split_pdf(request: SplitPdfRequest) -> Result<SplitPdfResponse, String> {
     }
 
     Ok(SplitPdfResponse { output_files })
+}
+
+#[tauri::command]
+pub fn render_pdf_pages(
+    app_handle: AppHandle,
+    request: RenderPdfPagesRequest,
+) -> Result<RenderPdfPagesResponse, String> {
+    render_pdf_pages_impl(request, Some(&app_handle))
+}
+
+fn render_pdf_pages_impl(
+    request: RenderPdfPagesRequest,
+    app_handle: Option<&AppHandle>,
+) -> Result<RenderPdfPagesResponse, String> {
+    let input_path = PathBuf::from(&request.input_path);
+    let pdfium = bind_pdfium(app_handle)?;
+    let document = pdfium
+        .load_pdf_from_file(&input_path, None)
+        .map_err(|error| error.to_string())?;
+    let page_count = usize::from(document.pages().len());
+
+    validate_preview_page_numbers(&request.page_numbers, page_count)?;
+
+    let render_config = render_config_for_preset(request.size_preset);
+    let mut rendered_pages = BTreeMap::new();
+
+    for page_number in request.page_numbers {
+        let page_index = u16::try_from(page_number - 1)
+            .map_err(|_| "Preview page index exceeds Pdfium limits".to_string())?;
+        let page = document
+            .pages()
+            .get(page_index)
+            .map_err(|error| error.to_string())?;
+        let image = page
+            .render_with_config(&render_config)
+            .map_err(|error| error.to_string())?
+            .as_image();
+
+        let width = image.width();
+        let height = image.height();
+        let mut png_bytes = Cursor::new(Vec::new());
+
+        image
+            .write_to(&mut png_bytes, ImageFormat::Png)
+            .map_err(|error| error.to_string())?;
+
+        rendered_pages.insert(
+            page_number.to_string(),
+            RenderedPageImagePayload {
+                mime_type: "image/png".into(),
+                base64: BASE64_STANDARD.encode(png_bytes.into_inner()),
+                width,
+                height,
+            },
+        );
+    }
+
+    Ok(rendered_pages)
+}
+
+fn bind_pdfium(app_handle: Option<&AppHandle>) -> Result<Pdfium, String> {
+    let library_name = Pdfium::pdfium_platform_library_name();
+    let mut attempted_paths = Vec::new();
+
+    for candidate in pdfium_library_candidates(app_handle, &library_name) {
+        if !candidate.exists() {
+            continue;
+        }
+
+        attempted_paths.push(candidate.display().to_string());
+
+        if let Ok(bindings) = Pdfium::bind_to_library(&candidate) {
+            return Ok(Pdfium::new(bindings));
+        }
+    }
+
+    Pdfium::bind_to_system_library()
+        .map(Pdfium::new)
+        .map_err(|error| {
+            if attempted_paths.is_empty() {
+                error.to_string()
+            } else {
+                format!(
+                    "Failed to bind Pdfium from bundled paths [{}]; system fallback failed: {}",
+                    attempted_paths.join(", "),
+                    error
+                )
+            }
+        })
+}
+
+fn pdfium_library_candidates(
+    app_handle: Option<&AppHandle>,
+    library_name: &OsString,
+) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(path) = std::env::var_os("CAMPUSKIT_PDFIUM_LIB_PATH") {
+        push_unique_pdfium_candidate(
+            &mut candidates,
+            normalize_pdfium_candidate(PathBuf::from(path), library_name),
+        );
+    }
+
+    let manifest_resource_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("resources")
+        .join(pdfium_resource_subdir())
+        .join(library_name);
+    push_unique_pdfium_candidate(&mut candidates, manifest_resource_path);
+
+    if let Some(app_handle) = app_handle {
+        if let Ok(resource_dir) = app_handle.path().resource_dir() {
+            push_unique_pdfium_candidate(
+                &mut candidates,
+                resource_dir.join(pdfium_resource_subdir()).join(library_name),
+            );
+            push_unique_pdfium_candidate(
+                &mut candidates,
+                resource_dir
+                    .join("resources")
+                    .join(pdfium_resource_subdir())
+                    .join(library_name),
+            );
+        }
+    }
+
+    if let Ok(current_executable) = std::env::current_exe() {
+        if let Some(directory) = current_executable.parent() {
+            push_unique_pdfium_candidate(&mut candidates, directory.join(library_name));
+        }
+    }
+
+    candidates
+}
+
+fn normalize_pdfium_candidate(candidate: PathBuf, library_name: &OsString) -> PathBuf {
+    if candidate.is_dir() {
+        candidate.join(library_name)
+    } else {
+        candidate
+    }
+}
+
+fn push_unique_pdfium_candidate(candidates: &mut Vec<PathBuf>, candidate: PathBuf) {
+    if !candidates.iter().any(|existing| existing == &candidate) {
+        candidates.push(candidate);
+    }
+}
+
+fn pdfium_resource_subdir() -> PathBuf {
+    PathBuf::from("pdfium").join(format!("{}-{}", std::env::consts::OS, std::env::consts::ARCH))
+}
+
+fn render_config_for_preset(size_preset: PreviewSizePreset) -> PdfRenderConfig {
+    match size_preset {
+        PreviewSizePreset::Thumbnail => PdfRenderConfig::new().thumbnail(176),
+        PreviewSizePreset::Focus => PdfRenderConfig::new()
+            .set_target_width(1200)
+            .set_maximum_height(1600),
+    }
+}
+
+fn validate_preview_page_numbers(page_numbers: &[usize], page_count: usize) -> Result<(), String> {
+    if page_numbers.is_empty() {
+        return Err("At least one preview page is required".into());
+    }
+
+    let mut seen_pages = HashSet::new();
+
+    for page_number in page_numbers {
+        if *page_number < 1 {
+            return Err("Preview page indexes must be 1-based".into());
+        }
+
+        if *page_number > page_count {
+            return Err("Preview page exceeds the PDF page count".into());
+        }
+
+        if !seen_pages.insert(*page_number) {
+            return Err("Duplicate preview page numbers are not allowed".into());
+        }
+    }
+
+    Ok(())
 }
 
 fn validate_segments(segments: &[SplitSegment], page_count: usize) -> Result<(), String> {
@@ -184,10 +401,13 @@ fn extract_segment_pdf(original: &Document, start: usize, end: usize) -> Result<
 #[cfg(test)]
 mod tests {
     use super::{
-        get_pdf_metadata, split_pdf, validate_segments, PdfMetadataRequest, SplitPdfRequest,
-        SplitSegment,
+        get_pdf_metadata, render_pdf_pages_impl, split_pdf, validate_preview_page_numbers,
+        validate_segments, PdfMetadataRequest, PreviewSizePreset, RenderPdfPagesRequest,
+        SplitPdfRequest, SplitSegment,
     };
     use crate::platform::pathing::{build_output_filename, default_base_name_from_path};
+    use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
+    use base64::Engine;
     use lopdf::content::{Content, Operation};
     use lopdf::{dictionary, Document, Object, ObjectId, Stream};
     use std::fs;
@@ -203,6 +423,13 @@ mod tests {
             ],
             12,
         );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_preview_page_numbers() {
+        let result = validate_preview_page_numbers(&[1, 1], 3);
 
         assert!(result.is_err());
     }
@@ -236,6 +463,71 @@ mod tests {
         assert_eq!(response.page_count, 1);
 
         std::fs::remove_file(file_path).expect("sample pdf should be removed");
+    }
+
+    #[test]
+    fn renders_requested_pages_to_png_payloads() {
+        let file_path = build_temp_pdf_path();
+        write_sample_pdf(
+            &file_path,
+            &[
+                "CampusKit preview test page 1",
+                "CampusKit preview test page 2",
+                "CampusKit preview test page 3",
+                "CampusKit preview test page 4",
+            ],
+        );
+
+        let response = render_pdf_pages_impl(
+            RenderPdfPagesRequest {
+                input_path: file_path.to_string_lossy().to_string(),
+                page_numbers: vec![1, 3],
+                size_preset: PreviewSizePreset::Thumbnail,
+            },
+            None,
+        )
+        .expect("preview rendering should succeed");
+
+        let keys = response.keys().cloned().collect::<Vec<_>>();
+        assert_eq!(keys, vec!["1".to_string(), "3".to_string()]);
+
+        let first_page = response.get("1").expect("page 1 payload should exist");
+        assert_eq!(first_page.mime_type, "image/png");
+        assert!(first_page.width > 0);
+        assert!(first_page.height > 0);
+
+        let png_bytes = BASE64_STANDARD
+            .decode(&first_page.base64)
+            .expect("preview payload should be valid base64");
+        assert!(
+            png_bytes.starts_with(&[137, 80, 78, 71, 13, 10, 26, 10]),
+            "preview payload should be a png image"
+        );
+
+        fs::remove_file(file_path).expect("sample preview pdf should be removed");
+    }
+
+    #[test]
+    fn rejects_preview_pages_that_exceed_the_document_page_count() {
+        let file_path = build_temp_pdf_path();
+        write_sample_pdf(
+            &file_path,
+            &["CampusKit preview bounds page 1", "CampusKit preview bounds page 2"],
+        );
+
+        let error = render_pdf_pages_impl(
+            RenderPdfPagesRequest {
+                input_path: file_path.to_string_lossy().to_string(),
+                page_numbers: vec![3],
+                size_preset: PreviewSizePreset::Focus,
+            },
+            None,
+        )
+        .expect_err("out-of-range preview requests should fail");
+
+        assert!(error.contains("Preview page exceeds the PDF page count"));
+
+        fs::remove_file(file_path).expect("sample bounds pdf should be removed");
     }
 
     #[test]

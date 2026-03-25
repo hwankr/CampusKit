@@ -2,9 +2,17 @@ import {
   getPdfMetadata as loadPdfMetadata,
   pickOutputDirectory,
   pickPdfFile,
+  renderPdfPages as loadRenderedPdfPages,
   splitPdf,
 } from "../../../shared/platform/documentBridge";
+import type {
+  PdfPreviewImagePayload,
+  RenderPdfPagesRequest,
+  RenderPdfPagesResponse,
+} from "../../../shared/platform/documentBridge";
 import { buildPdfDocumentMetadata } from "../model/pdfDocument";
+
+export type { PdfPreviewImagePayload, RenderPdfPagesRequest, RenderPdfPagesResponse };
 
 export const pdfSplitService = {
   async getPdfMetadata(inputPath: string) {
@@ -13,5 +21,8 @@ export const pdfSplitService = {
   },
   pickOutputDirectory,
   pickPdfFile,
+  renderPdfPages(request: RenderPdfPagesRequest) {
+    return loadRenderedPdfPages(request);
+  },
   splitPdf,
 };

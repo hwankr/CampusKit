@@ -1,6 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { SplitRequestPayload } from "../../features/pdf-split/model/splitJob";
+import type {
+  RenderPdfPagesRequest,
+  RenderPdfPagesResponse,
+} from "./pdfPreviewContract";
+export type {
+  PdfPreviewImagePayload,
+  PdfPreviewSizePreset,
+  RenderPdfPagesRequest,
+  RenderPdfPagesResponse,
+} from "./pdfPreviewContract";
 
 type PdfMetadataResponse = {
   fileName: string;
@@ -42,6 +52,12 @@ export async function getPdfMetadata(inputPath: string) {
 
 export async function splitPdf(request: SplitRequestPayload) {
   return invoke<SplitPdfResponse>("split_pdf", {
+    request,
+  });
+}
+
+export async function renderPdfPages(request: RenderPdfPagesRequest) {
+  return invoke<RenderPdfPagesResponse>("render_pdf_pages", {
     request,
   });
 }
