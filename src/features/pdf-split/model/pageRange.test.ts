@@ -3,9 +3,58 @@ import assert from "node:assert/strict";
 import {
   addSplitPoint,
   buildPageSegmentsFromSplitPoints,
+  parsePageRangeInput,
   parseSplitPointInput,
   removeSplitPoint,
 } from "./pageRange.ts";
+
+test("parsePageRangeInput supports comma-separated typed ranges and auto-completes the final range", () => {
+  const plan = parsePageRangeInput("1-20, 21-40", 60);
+
+  assert.deepEqual(plan.segments, [
+    { start: 1, end: 20, label: "1-20", pageCount: 20 },
+    { start: 21, end: 40, label: "21-40", pageCount: 20 },
+    { start: 41, end: 60, label: "41-60", pageCount: 20 },
+  ]);
+  assert.deepEqual(plan.typedSegments, [
+    { start: 1, end: 20, label: "1-20", pageCount: 20 },
+    { start: 21, end: 40, label: "21-40", pageCount: 20 },
+  ]);
+  assert.deepEqual(plan.derivedFinalSegment, {
+    start: 41,
+    end: 60,
+    label: "41-60",
+    pageCount: 20,
+  });
+});
+
+test("parsePageRangeInput supports newline-separated tokens and single-page entries", () => {
+  const plan = parsePageRangeInput("1\n2-3", 5);
+
+  assert.deepEqual(plan.segments, [
+    { start: 1, end: 1, label: "1", pageCount: 1 },
+    { start: 2, end: 3, label: "2-3", pageCount: 2 },
+    { start: 4, end: 5, label: "4-5", pageCount: 2 },
+  ]);
+});
+
+test("parsePageRangeInput rejects a plan that does not start at page 1", () => {
+  assert.throws(() => parsePageRangeInput("5-10", 20), {
+    message: "validationRangeMustStartAtOne",
+  });
+});
+
+test("parsePageRangeInput rejects gaps between typed ranges", () => {
+  assert.throws(() => parsePageRangeInput("1-10, 12-20", 20), {
+    message: "validationRangeGapNotAllowed",
+  });
+});
+
+test("parsePageRangeInput rejects a single full-document segment because split needs 2 outputs", () => {
+  assert.throws(() => parsePageRangeInput("1-20", 20), {
+    message: "validationRangeRequiresAtLeastTwoOutputs",
+  });
+});
 
 test("parseSplitPointInput trims and parses a positive boundary", () => {
   assert.equal(parseSplitPointInput(" 10 "), 10);

@@ -3,12 +3,7 @@ import type { MessageKey } from "../../shared/i18n/messages/ko";
 import { useI18n } from "../../shared/i18n/useI18n";
 import { getFileName } from "../../shared/platform/path";
 import { getPendingPdfFileName, type PdfDocumentMetadata } from "./model/pdfDocument";
-import {
-  addSplitPoint,
-  buildPageSegmentsFromSplitPoints,
-  removeSplitPoint,
-  type PageSegment,
-} from "./model/pageRange";
+import { parsePageRangeInput, type PageSegment } from "./model/pageRange";
 import {
   buildPdfPageItems,
   buildPlannedPreviewRequests,
@@ -33,6 +28,7 @@ type StatusState =
 
 type RangeEntry = {
   fileName: string;
+  isDerivedFinal: boolean;
   segment: PageSegment;
 };
 
@@ -45,9 +41,9 @@ export function PdfSplitPage() {
   const [document, setDocument] = useState<PdfDocumentMetadata | null>(null);
   const [pendingInputPath, setPendingInputPath] = useState<string | null>(null);
   const [outputDir, setOutputDir] = useState("");
-  const [splitPointInput, setSplitPointInput] = useState("");
-  const [splitPoints, setSplitPoints] = useState<number[]>([]);
+  const [rangeInput, setRangeInput] = useState("");
   const [segments, setSegments] = useState<PageSegment[]>([]);
+  const [derivedFinalSegment, setDerivedFinalSegment] = useState<PageSegment | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [outputFiles, setOutputFiles] = useState<string[]>([]);
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
@@ -100,13 +96,15 @@ export function PdfSplitPage() {
   useEffect(() => {
     if (pageCount === null) {
       setSegments([]);
+      setDerivedFinalSegment(null);
       setValidationMessage(null);
       setSelectedPageNumber(syncSelectedPageNumber(null, 1, true));
       return;
     }
 
-    if (splitPoints.length === 0) {
+    if (!rangeInput.trim()) {
       setSegments([]);
+      setDerivedFinalSegment(null);
       setValidationMessage(null);
       setSelectedPageNumber((currentPageNumber) =>
         syncSelectedPageNumber(pageCount, currentPageNumber),
@@ -115,31 +113,36 @@ export function PdfSplitPage() {
     }
 
     try {
-      const nextSegments = buildPageSegmentsFromSplitPoints(splitPoints, pageCount);
-      setSegments(nextSegments);
+      const plan = parsePageRangeInput(rangeInput, pageCount);
+
+      setSegments(plan.segments);
+      setDerivedFinalSegment(plan.derivedFinalSegment);
+      setValidationMessage(null);
       setSelectedPageNumber((currentPageNumber) =>
         syncSelectedPageNumber(pageCount, currentPageNumber),
       );
     } catch (error) {
       const errorKey: MessageKey =
         error instanceof Error ? (error.message as MessageKey) : "statusUnknownError";
+
       setSegments([]);
+      setDerivedFinalSegment(null);
       setValidationMessage(t(errorKey));
       setSelectedPageNumber((currentPageNumber) =>
         syncSelectedPageNumber(pageCount, currentPageNumber),
       );
     }
-  }, [pageCount, splitPoints, t]);
+  }, [pageCount, rangeInput, t]);
 
   const expectedFiles = segments.map((segment, index) =>
     buildPreviewFileName(deriveSplitBaseName(documentName || inputPath), segment, index),
   );
-
-const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
-  segment,
-  fileName: outputFiles[index] ? getFileName(outputFiles[index]) : expectedFiles[index],
-}));
-
+  const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
+    segment,
+    fileName: outputFiles[index] ? getFileName(outputFiles[index]) : expectedFiles[index],
+    isDerivedFinal:
+      derivedFinalSegment?.start === segment.start && derivedFinalSegment.end === segment.end,
+  }));
   const pageItems = pageCount !== null ? buildPdfPageItems(pageCount) : [];
   const previewRequestPlan =
     pageCount !== null && inputPath
@@ -166,12 +169,17 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
     (focusPreviewCacheKey ? previewLoadingKeySet.has(focusPreviewCacheKey) : false) ||
     (thumbnailPreviewCacheKey ? previewLoadingKeySet.has(thumbnailPreviewCacheKey) : false);
   const selectedPreviewDataUri = toPreviewDataUri(selectedPreviewImage);
+  const composerFeedbackMessage = validationMessage ?? t("rangePlanComposerHint");
+  const planSummary =
+    pageCount !== null && rangeEntries.length > 0
+      ? `${rangeEntries.length} ${t("splitPlanOutputsUnit")} · ${pageCount} ${t("summaryPagesUnit")}`
+      : null;
 
   const canSubmit =
     Boolean(inputPath) &&
     Boolean(outputDir) &&
     pageCount !== null &&
-    splitPoints.length > 0 &&
+    Boolean(rangeInput.trim()) &&
     segments.length > 0 &&
     !validationMessage &&
     !isBusy;
@@ -286,9 +294,9 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
       const metadata = await pdfSplitService.getPdfMetadata(selectedPath);
       setDocument(metadata);
       setPendingInputPath(null);
-      setSplitPointInput("");
-      setSplitPoints([]);
+      setRangeInput("");
       setSegments([]);
+      setDerivedFinalSegment(null);
       setOutputFiles([]);
       resetPreviewState();
       setValidationMessage(null);
@@ -333,7 +341,7 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
       setStatus({
         tone: "success",
         message: t("statusSplitSuccess"),
-        detail: `${response.outputFiles.length} file(s) saved to ${outputDir}`,
+        detail: `${response.outputFiles.length} ${t("statusSplitSavedCountLabel")} · ${outputDir}`,
       });
     } catch (error) {
       setStatus({
@@ -344,8 +352,8 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
     }
   }
 
-  function handleSplitPointInputChange(value: string) {
-    setSplitPointInput(value);
+  function handleRangeInputChange(value: string) {
+    setRangeInput(value);
     setOutputFiles([]);
 
     if (validationMessage) {
@@ -357,38 +365,8 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
     }
   }
 
-  function handleAddSplitPoint() {
-    if (pageCount === null || isBusy) {
-      return;
-    }
-
-    try {
-      setSplitPoints((current) => addSplitPoint(current, splitPointInput, pageCount));
-      setSplitPointInput("");
-      setOutputFiles([]);
-      setValidationMessage(null);
-      setStatus(buildIdleStatus(pageCount));
-    } catch (error) {
-      const errorKey: MessageKey =
-        error instanceof Error ? (error.message as MessageKey) : "statusUnknownError";
-      setValidationMessage(t(errorKey));
-    }
-  }
-
-  function handleRemoveSplitPoint(splitPoint: number) {
-    setSplitPoints((current) => removeSplitPoint(current, splitPoint));
-    setOutputFiles([]);
-    setValidationMessage(null);
-
-    if (status.tone !== "running") {
-      setStatus(buildIdleStatus(pageCount));
-    }
-  }
-
-  function handleSplitPointInputKeyDown(key: string) {
-    if (key === "Enter") {
-      handleAddSplitPoint();
-    }
+  function handleSelectRangeEntry(entry: RangeEntry) {
+    setSelectedPageNumber(entry.segment.start);
   }
 
   return (
@@ -405,18 +383,14 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
           <div className="split-toolbarChips" data-slot="document-info">
             <span className="split-toolbarChip">{documentName || t("summaryPendingValue")}</span>
             <span className="split-toolbarChip">
-              {pageCount !== null ? `${pageCount} ${t("summaryPagesUnit")}` : t("summaryPendingValue")}
+              {pageCount !== null
+                ? `${pageCount} ${t("summaryPagesUnit")}`
+                : t("summaryPendingValue")}
             </span>
           </div>
         </div>
 
         <div className="split-toolbarActions">
-          <button type="button" className="split-toolbarUtility">
-            Share
-          </button>
-          <button type="button" className="split-toolbarUtility">
-            More
-          </button>
           <div data-slot="save-action">
             <button
               type="button"
@@ -432,25 +406,27 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
 
       <div className="split-stage">
         <div className="split-rail">
-          <section className="split-region split-guidanceRegion">
-            <div className="split-regionLabel">{t("pdfSplitSetupTitle")}</div>
-            <div className="split-guidanceNote">
-              <p className="split-panelCopy">{t("pdfSplitSetupBody")}</p>
-              <p className="split-guidanceEmphasis">{t("pdfSplitFlowRange")}</p>
-            </div>
-          </section>
-
-          <section className="split-region split-intakeRegion" data-slot="dropzone" data-empty={!displayedInputPath}>
+          <section
+            className="split-region split-intakeRegion"
+            data-slot="dropzone"
+            data-empty={!displayedInputPath}
+          >
             <div className="split-regionLabel">{t("inputFileLabel")}</div>
             <div className="split-intakeWell">
               <div className="split-intakeBadge">PDF</div>
-              <p className="split-panelCopy">{t("pdfSplitIntakeBody")}</p>
-              <button type="button" className="ghost-button split-intakeButton" onClick={handleChooseInput} disabled={isBusy}>
+              <button
+                type="button"
+                className="ghost-button split-intakeButton"
+                onClick={handleChooseInput}
+                disabled={isBusy}
+              >
                 {t("browseFileAction")}
               </button>
               <div className="split-intakeMeta">
                 <strong>{documentName || t("summaryPendingValue")}</strong>
-                <span>{displayedInputPath ? getFileName(displayedInputPath) : t("summaryPendingValue")}</span>
+                <span>
+                  {displayedInputPath ? getFileName(displayedInputPath) : t("summaryPendingValue")}
+                </span>
               </div>
               {displayedInputPath ? <p className="split-documentPath">{displayedInputPath}</p> : null}
             </div>
@@ -463,80 +439,60 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
           >
             <div className="split-regionHeader">
               <div className="split-regionLabel">{t("pdfSplitRangesTitle")}</div>
-              <button
-                type="button"
-                className="split-addAction"
-                onClick={handleAddSplitPoint}
-                disabled={pageCount === null || isBusy}
-              >
-                +
-              </button>
+              {planSummary ? <div className="split-planSummary">{planSummary}</div> : null}
             </div>
 
-            <div className="split-rangeComposer">
-              <input
-                className="field-input"
-                value={splitPointInput}
-                onChange={(event) => handleSplitPointInputChange(event.currentTarget.value)}
-                onKeyDown={(event) => handleSplitPointInputKeyDown(event.key)}
-                placeholder={t("pageRangePlaceholder")}
-                disabled={pageCount === null || isBusy}
-              />
-              <button
-                type="button"
-                className="ghost-button"
-                onClick={handleAddSplitPoint}
-                disabled={pageCount === null || isBusy}
-              >
-                {t("splitPointAddAction")}
-              </button>
-            </div>
+            <textarea
+              className="field-textarea split-rangeTextarea"
+              value={rangeInput}
+              onChange={(event) => handleRangeInputChange(event.currentTarget.value)}
+              placeholder={t("pageRangePlaceholder")}
+              aria-describedby="split-range-composer-feedback"
+              aria-invalid={validationMessage ? "true" : "false"}
+              disabled={pageCount === null || isBusy}
+              rows={3}
+            />
 
-            {splitPoints.length > 0 ? (
-              <div className="split-pointStrip">
-                {splitPoints.map((splitPoint) => (
-                  <button
-                    key={splitPoint}
-                    type="button"
-                    className="split-pointToken"
-                    onClick={() => handleRemoveSplitPoint(splitPoint)}
-                    disabled={isBusy}
-                  >
-                    <span>{`${splitPoint}${t("splitPointAfterSuffix")}`}</span>
-                    <span className="split-pointTokenAction">{t("splitPointRemoveAction")}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
+            <div
+              id="split-range-composer-feedback"
+              className={`split-rangeComposerFeedback${validationMessage ? " is-error" : ""}`}
+            >
+              {composerFeedbackMessage}
+            </div>
 
             {rangeEntries.length > 0 ? (
               <div className="split-rangeList">
                 {rangeEntries.map((entry, index) => (
                   <div
                     key={`${entry.segment.label}-${index}`}
-                    className={`split-rangeRow${isPageInSegment(entry.segment, selectedPageNumber) ? " is-selected" : ""}`}
+                    className={`split-rangeRow${
+                      isPageInSegment(entry.segment, selectedPageNumber) ? " is-selected" : ""
+                    }`}
                   >
                     <span className="split-rangeDot" />
-                    <span className="split-rangeRowLabel">{entry.segment.label}</span>
-                    <span className="split-rangeRowMeta">{entry.fileName}</span>
+                    <button
+                      type="button"
+                      className="split-rangeButton"
+                      data-slot="range-row-action"
+                      onClick={() => handleSelectRangeEntry(entry)}
+                      aria-pressed={isPageInSegment(entry.segment, selectedPageNumber)}
+                    >
+                      <span className="split-rangeButtonHeader">
+                        <span className="split-rangeRowLabel">{entry.segment.label}</span>
+                        <span className="split-rangeRowCount">
+                          {`${entry.segment.pageCount} ${t("summaryPagesUnit")}`}
+                        </span>
+                        {entry.isDerivedFinal ? (
+                          <span className="split-rangeBadge">{t("splitRangeDerivedBadge")}</span>
+                        ) : null}
+                      </span>
+                      <span className="split-rangeRowMeta">{entry.fileName}</span>
+                    </button>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="split-rangeList">
-                <div className="split-rangeRow is-ghost">
-                  <span className="split-rangeDot" />
-                  <span className="split-rangeRowLabel">Pages 1 - 10</span>
-                </div>
-                <div className="split-rangeRow is-ghost">
-                  <span className="split-rangeDot" />
-                  <span className="split-rangeRowLabel">Pages 11 - 20</span>
-                </div>
-                <div className="split-rangeRow is-ghost">
-                  <span className="split-rangeDot" />
-                  <span className="split-rangeRowLabel">Custom Range...</span>
-                </div>
-              </div>
+              <div className="split-rangeEmpty">{t("pdfSplitRangesEmpty")}</div>
             )}
           </section>
 
@@ -549,12 +505,15 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
                 readOnly
                 placeholder={t("outputDirPlaceholder")}
               />
-              <button type="button" className="ghost-button" onClick={handleChooseOutput} disabled={isBusy}>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={handleChooseOutput}
+                disabled={isBusy}
+              >
                 {t("browseFolderAction")}
               </button>
             </div>
-
-            {validationMessage ? <div className="validation-banner">{validationMessage}</div> : null}
 
             <div className="status-card" data-tone={status.tone}>
               <strong>{status.message}</strong>
@@ -573,30 +532,33 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
             <div className="split-previewCanvas">
               <article className="split-manuscript">
                 <div className="split-manuscriptFolio">
-                  {`Folio ${String(selectedPageNumber).padStart(3, "0")}`}
+                  {`${t("pdfSplitPreviewFolioLabel")} ${String(selectedPageNumber).padStart(3, "0")}`}
                 </div>
-                <div
-                  className="split-manuscriptImageFrame"
-                  data-loading={selectedPreviewLoading}
-                >
+                <div className="split-manuscriptImageFrame" data-loading={selectedPreviewLoading}>
                   {selectedPreviewDataUri ? (
                     <img
                       className="split-manuscriptImage"
                       src={selectedPreviewDataUri}
-                      alt={`Preview of page ${selectedPageNumber}`}
+                      alt={`${t("pdfSplitPreviewAlt")} ${selectedPageNumber}`}
                     />
                   ) : (
                     <div className="split-manuscriptPlaceholder">
-                      <strong>{pageCount !== null ? `Page ${selectedPageNumber}` : t("pdfSplitPreviewEmpty")}</strong>
+                      <strong>
+                        {pageCount !== null
+                          ? `${t("pdfSplitPreviewPageLabel")} ${selectedPageNumber}`
+                          : t("pdfSplitPreviewEmpty")}
+                      </strong>
                       <span>
-                        {selectedPreviewLoading ? t("statusLoadingDocument") : t("pdfSplitPreviewHintEmpty")}
+                        {selectedPreviewLoading
+                          ? t("statusLoadingDocument")
+                          : t("pdfSplitPreviewHintEmpty")}
                       </span>
                     </div>
                   )}
                 </div>
                 <h3 className="split-manuscriptTitle">
                   {pageCount !== null
-                    ? `${documentName || t("pdfSplitPreviewEmpty")} · Page ${selectedPageNumber}`
+                    ? `${documentName || t("pdfSplitPreviewEmpty")} · ${t("pdfSplitPreviewPageLabel")} ${selectedPageNumber}`
                     : t("pdfSplitPreviewEmpty")}
                 </h3>
                 <div className="split-manuscriptBody">
@@ -608,7 +570,7 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
                   <p>
                     {selectedSegment
                       ? `${selectedSegment.label} / ${selectedSegment.pageCount} ${t("summaryPagesUnit")}`
-                      : displayedInputPath || t("statusReadyForRange")}
+                      : validationMessage ?? displayedInputPath ?? t("rangePlanComposerHint")}
                   </p>
                   <div className="split-manuscriptQuote">
                     {selectedSegment ? selectedSegment.label : t("pdfSplitPreviewCaption")}
@@ -631,7 +593,9 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
                     inputPath && pageCount !== null
                       ? buildPreviewCacheKey(inputPath, "thumbnail", pageItem.pageNumber)
                       : null;
-                  const thumbnailImage = thumbnailCacheKey ? previewCache[thumbnailCacheKey] ?? null : null;
+                  const thumbnailImage = thumbnailCacheKey
+                    ? previewCache[thumbnailCacheKey] ?? null
+                    : null;
                   const thumbnailLoading = thumbnailCacheKey
                     ? previewLoadingKeySet.has(thumbnailCacheKey)
                     : false;
@@ -641,7 +605,9 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
                     <button
                       key={pageItem.key}
                       type="button"
-                      className={`split-thumbnailCard${selectedPageNumber === pageItem.pageNumber ? " is-selected" : ""}`}
+                      className={`split-thumbnailCard${
+                        selectedPageNumber === pageItem.pageNumber ? " is-selected" : ""
+                      }`}
                       onClick={() => setSelectedPageNumber(pageItem.pageNumber)}
                       data-windowed={thumbnailWindowPages.has(pageItem.pageNumber)}
                     >
@@ -654,7 +620,7 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
                           <img
                             className="split-thumbnailImage"
                             src={thumbnailDataUri}
-                            alt={`Thumbnail of page ${pageItem.pageNumber}`}
+                            alt={`${t("pdfSplitThumbnailAlt")} ${pageItem.pageNumber}`}
                           />
                         ) : (
                           <span className="split-thumbnailState">
@@ -676,7 +642,9 @@ const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
                     key={`placeholder-${index + 1}`}
                     className={`split-thumbnailCard${index === 0 ? " is-selected" : ""}`}
                   >
-                    <div className="split-thumbnailFrame">{index === 0 ? documentName || "Page" : null}</div>
+                    <div className="split-thumbnailFrame">
+                      {index === 0 ? documentName || t("pdfSplitPreviewPageLabel") : null}
+                    </div>
                     <div className="split-thumbnailNumber">{String(index + 1)}</div>
                   </div>
                 ))}

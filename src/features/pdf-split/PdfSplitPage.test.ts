@@ -20,18 +20,25 @@ test("pdf split page wires the feature service without importing the platform br
 test("pdf split page uses page-driven preview state while keeping the current workspace slots", async () => {
   const source = await readFile(pagePath, "utf8");
 
-  assert.match(source, /addSplitPoint/);
-  assert.match(source, /buildPageSegmentsFromSplitPoints/);
+  assert.match(source, /parsePageRangeInput/);
   assert.match(source, /buildPdfPageItems/);
   assert.match(source, /buildPlannedPreviewRequests/);
   assert.match(source, /findPageSegmentForPage/);
   assert.match(source, /syncSelectedPageNumber/);
   assert.match(source, /selectedPageNumber/);
-  assert.match(source, /removeSplitPoint/);
-  assert.match(source, /splitPointInput/);
-  assert.doesNotMatch(source, /parsePageRangeInput/);
+  assert.match(source, /rangeInput/);
+  assert.match(source, /derivedFinalSegment/);
+  assert.match(source, /splitRangeDerivedBadge/);
+  assert.match(source, /rangePlanComposerHint/);
+  assert.doesNotMatch(source, /addSplitPoint/);
+  assert.doesNotMatch(source, /buildPageSegmentsFromSplitPoints/);
+  assert.doesNotMatch(source, /getQuickAddSplitPointState/);
+  assert.doesNotMatch(source, /getSelectionPageAfterSplitPoint/);
+  assert.doesNotMatch(source, /removeSplitPoint/);
+  assert.doesNotMatch(source, /splitPointInput/);
+  assert.doesNotMatch(source, /splitPoints/);
+  assert.doesNotMatch(source, /splitPointFlow/);
   assert.doesNotMatch(source, /selectedRangeIndex/);
-  assert.doesNotMatch(source, /setSelectedPageNumber\(entry\.segment\.start\)/);
   assert.match(source, /statusLoadingDocument/);
   assert.match(source, /statusReplacingDocument/);
   assert.match(source, /statusMetadataReplaceError/);
@@ -50,6 +57,12 @@ test("pdf split page uses page-driven preview state while keeping the current wo
   assert.match(source, /data-slot="thumbnail-rail"/);
   assert.match(source, /data-slot="ranges-panel"/);
   assert.match(source, /data-slot="save-action"/);
+  assert.match(source, /data-slot="range-row-action"/);
   assert.match(source, /data-preview-request-order/);
   assert.match(source, /data-windowed/);
+  assert.match(source, /split-rangeComposerFeedback/);
+  assert.match(source, /split-rangeButton/);
+  assert.doesNotMatch(source, /split-current-page-action/);
+  assert.doesNotMatch(source, /split-pointToken/);
+  assert.doesNotMatch(source, /split-rangeRemoveAction/);
 });

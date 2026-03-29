@@ -304,13 +304,13 @@ fn validate_preview_page_numbers(page_numbers: &[usize], page_count: usize) -> R
 }
 
 fn validate_segments(segments: &[SplitSegment], page_count: usize) -> Result<(), String> {
-    if segments.is_empty() {
-        return Err("At least one segment is required".into());
+    if segments.len() < 2 {
+        return Err("At least two output segments are required".into());
     }
 
-    let mut seen_pages = HashSet::new();
+    let mut previous_end = 0;
 
-    for segment in segments {
+    for (index, segment) in segments.iter().enumerate() {
         if segment.start < 1 || segment.end < 1 {
             return Err("Page indexes must be 1-based".into());
         }
@@ -323,11 +323,23 @@ fn validate_segments(segments: &[SplitSegment], page_count: usize) -> Result<(),
             return Err("Segment exceeds the PDF page count".into());
         }
 
-        for page in segment.start..=segment.end {
-            if !seen_pages.insert(page) {
-                return Err("Overlapping page segments are not allowed".into());
-            }
+        if index == 0 && segment.start != 1 {
+            return Err("The first segment must start at page 1".into());
         }
+
+        if index > 0 && segment.start <= previous_end {
+            return Err("Overlapping page segments are not allowed".into());
+        }
+
+        if index > 0 && segment.start != previous_end + 1 {
+            return Err("Gapless split segments are required".into());
+        }
+
+        previous_end = segment.end;
+    }
+
+    if previous_end != page_count {
+        return Err("The final segment must end at the document's last page".into());
     }
 
     Ok(())
@@ -422,6 +434,52 @@ mod tests {
                 SplitSegment { start: 3, end: 5 },
             ],
             12,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_segments_that_do_not_start_at_page_one() {
+        let result = validate_segments(
+            &[
+                SplitSegment { start: 2, end: 4 },
+                SplitSegment { start: 5, end: 8 },
+            ],
+            8,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_segments_with_gaps() {
+        let result = validate_segments(
+            &[
+                SplitSegment { start: 1, end: 3 },
+                SplitSegment { start: 5, end: 8 },
+            ],
+            8,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_a_single_full_document_segment() {
+        let result = validate_segments(&[SplitSegment { start: 1, end: 8 }], 8);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_segments_that_do_not_cover_the_document_end() {
+        let result = validate_segments(
+            &[
+                SplitSegment { start: 1, end: 3 },
+                SplitSegment { start: 4, end: 7 },
+            ],
+            8,
         );
 
         assert!(result.is_err());
