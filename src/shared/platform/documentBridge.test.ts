@@ -8,6 +8,9 @@ const bridgePath = path.resolve("src/shared/platform/documentBridge.ts");
 test("document bridge exposes the preview contract and invoke surface", async () => {
   const source = await readFile(bridgePath, "utf8");
 
+  assert.match(source, /downloadDir/);
+  assert.match(source, /getDefaultOutputDirectory/);
+  assert.match(source, /defaultPath/);
   assert.match(source, /RenderPdfPagesRequest/);
   assert.match(source, /RenderPdfPagesResponse/);
   assert.match(source, /renderPdfPages/);

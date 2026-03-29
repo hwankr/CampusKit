@@ -21,14 +21,23 @@ test("pdf split page uses page-driven preview state while keeping the current wo
   const source = await readFile(pagePath, "utf8");
 
   assert.match(source, /parsePageRangeInput/);
+  assert.match(source, /buildExecutablePageSegments/);
+  assert.match(source, /buildPageRangePlanSignature/);
+  assert.match(source, /buildRangeInputRewriteForTypedSegment/);
+  assert.match(source, /buildRangeInputRewriteForDerivedFinalSegment/);
+  assert.match(source, /canDismissDerivedFinalSegment/);
   assert.match(source, /buildPdfPageItems/);
   assert.match(source, /buildPlannedPreviewRequests/);
   assert.match(source, /findPageSegmentForPage/);
   assert.match(source, /syncSelectedPageNumber/);
+  assert.match(source, /getDefaultOutputDirectory/);
+  assert.match(source, /dismissedTailSignature/);
   assert.match(source, /selectedPageNumber/);
   assert.match(source, /rangeInput/);
   assert.match(source, /derivedFinalSegment/);
   assert.match(source, /splitRangeDerivedBadge/);
+  assert.match(source, /splitRangeEditAction/);
+  assert.match(source, /splitRangeDismissAction/);
   assert.match(source, /rangePlanComposerHint/);
   assert.doesNotMatch(source, /addSplitPoint/);
   assert.doesNotMatch(source, /buildPageSegmentsFromSplitPoints/);
@@ -62,7 +71,9 @@ test("pdf split page uses page-driven preview state while keeping the current wo
   assert.match(source, /data-windowed/);
   assert.match(source, /split-rangeComposerFeedback/);
   assert.match(source, /split-rangeButton/);
+  assert.match(source, /split-rangeEditAction/);
+  assert.match(source, /split-rangeRemoveAction/);
+  assert.match(source, /stopPropagation/);
   assert.doesNotMatch(source, /split-current-page-action/);
   assert.doesNotMatch(source, /split-pointToken/);
-  assert.doesNotMatch(source, /split-rangeRemoveAction/);
 });

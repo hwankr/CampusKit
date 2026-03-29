@@ -755,6 +755,14 @@ button {
   text-align: left;
 }
 
+.split-rangeContent {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  min-width: 0;
+}
+
 .split-rangeButtonHeader,
 .split-rangeRowSupport {
   display: flex;
@@ -791,6 +799,13 @@ button {
   font-weight: 700;
 }
 
+.split-rangeActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.split-rangeEditAction,
 .split-rangeRemoveAction {
   align-self: center;
   padding: 0;
@@ -800,6 +815,23 @@ button {
   font: inherit;
   font-size: var(--text-xs);
   font-weight: 700;
+}
+
+.split-rangeRemoveAction {
+  display: inline-flex;
+  min-width: 28px;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.split-rangeEditAction:disabled,
+.split-rangeRemoveAction:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
 }
 
 .split-rangeEmpty {

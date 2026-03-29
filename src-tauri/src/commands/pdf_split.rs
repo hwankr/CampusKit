@@ -338,10 +338,6 @@ fn validate_segments(segments: &[SplitSegment], page_count: usize) -> Result<(),
         previous_end = segment.end;
     }
 
-    if previous_end != page_count {
-        return Err("The final segment must end at the document's last page".into());
-    }
-
     Ok(())
 }
 
@@ -473,7 +469,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_segments_that_do_not_cover_the_document_end() {
+    fn allows_segments_that_do_not_cover_the_document_end() {
         let result = validate_segments(
             &[
                 SplitSegment { start: 1, end: 3 },
@@ -482,7 +478,7 @@ mod tests {
             8,
         );
 
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

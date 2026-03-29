@@ -8,6 +8,7 @@ const servicePath = path.resolve("src/features/pdf-split/service/pdfSplitService
 test("pdf split service exposes preview execution through the feature boundary", async () => {
   const source = await readFile(servicePath, "utf8");
 
+  assert.match(source, /getDefaultOutputDirectory/);
   assert.match(source, /getPdfMetadata/);
   assert.match(source, /pickOutputDirectory/);
   assert.match(source, /pickPdfFile/);

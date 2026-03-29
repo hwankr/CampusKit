@@ -3,7 +3,16 @@ import type { MessageKey } from "../../shared/i18n/messages/ko";
 import { useI18n } from "../../shared/i18n/useI18n";
 import { getFileName } from "../../shared/platform/path";
 import { getPendingPdfFileName, type PdfDocumentMetadata } from "./model/pdfDocument";
-import { parsePageRangeInput, type PageSegment } from "./model/pageRange";
+import {
+  buildExecutablePageSegments,
+  buildPageRangePlanSignature,
+  buildRangeInputRewriteForDerivedFinalSegment,
+  buildRangeInputRewriteForTypedSegment,
+  canDismissDerivedFinalSegment,
+  parsePageRangeInput,
+  type PageSegment,
+  type RangeInputRewrite,
+} from "./model/pageRange";
 import {
   buildPdfPageItems,
   buildPlannedPreviewRequests,
@@ -29,7 +38,9 @@ type StatusState =
 type RangeEntry = {
   fileName: string;
   isDerivedFinal: boolean;
+  provenance: "typed" | "derived-final";
   segment: PageSegment;
+  typedIndex: number | null;
 };
 
 function toPreviewDataUri(payload: PdfPreviewImagePayload | null) {
@@ -42,11 +53,13 @@ export function PdfSplitPage() {
   const [pendingInputPath, setPendingInputPath] = useState<string | null>(null);
   const [outputDir, setOutputDir] = useState("");
   const [rangeInput, setRangeInput] = useState("");
-  const [segments, setSegments] = useState<PageSegment[]>([]);
+  const [typedSegments, setTypedSegments] = useState<PageSegment[]>([]);
   const [derivedFinalSegment, setDerivedFinalSegment] = useState<PageSegment | null>(null);
+  const [dismissedTailSignature, setDismissedTailSignature] = useState<string | null>(null);
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [outputFiles, setOutputFiles] = useState<string[]>([]);
   const [selectedPageNumber, setSelectedPageNumber] = useState(1);
+  const rangeInputRef = useRef<HTMLTextAreaElement | null>(null);
   const [previewCache, setPreviewCache] = useState<Record<string, PdfPreviewImagePayload>>({});
   const [previewLoadingKeys, setPreviewLoadingKeys] = useState<string[]>([]);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -95,7 +108,7 @@ export function PdfSplitPage() {
 
   useEffect(() => {
     if (pageCount === null) {
-      setSegments([]);
+      setTypedSegments([]);
       setDerivedFinalSegment(null);
       setValidationMessage(null);
       setSelectedPageNumber(syncSelectedPageNumber(null, 1, true));
@@ -103,7 +116,7 @@ export function PdfSplitPage() {
     }
 
     if (!rangeInput.trim()) {
-      setSegments([]);
+      setTypedSegments([]);
       setDerivedFinalSegment(null);
       setValidationMessage(null);
       setSelectedPageNumber((currentPageNumber) =>
@@ -115,7 +128,7 @@ export function PdfSplitPage() {
     try {
       const plan = parsePageRangeInput(rangeInput, pageCount);
 
-      setSegments(plan.segments);
+      setTypedSegments(plan.typedSegments);
       setDerivedFinalSegment(plan.derivedFinalSegment);
       setValidationMessage(null);
       setSelectedPageNumber((currentPageNumber) =>
@@ -125,7 +138,7 @@ export function PdfSplitPage() {
       const errorKey: MessageKey =
         error instanceof Error ? (error.message as MessageKey) : "statusUnknownError";
 
-      setSegments([]);
+      setTypedSegments([]);
       setDerivedFinalSegment(null);
       setValidationMessage(t(errorKey));
       setSelectedPageNumber((currentPageNumber) =>
@@ -134,14 +147,56 @@ export function PdfSplitPage() {
     }
   }, [pageCount, rangeInput, t]);
 
-  const expectedFiles = segments.map((segment, index) =>
+  useEffect(() => {
+    if (outputDir) {
+      return;
+    }
+
+    let isActive = true;
+
+    void pdfSplitService
+      .getDefaultOutputDirectory()
+      .then((defaultOutputDir) => {
+        if (isActive && defaultOutputDir) {
+          setOutputDir(defaultOutputDir);
+        }
+      })
+      .catch(() => {
+        // Fallback to the current manual flow when Downloads cannot be resolved.
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [outputDir]);
+
+  const typedPlanSignature =
+    pageCount !== null ? buildPageRangePlanSignature(typedSegments, pageCount) : null;
+  const isDerivedFinalDismissed =
+    derivedFinalSegment !== null &&
+    typedPlanSignature !== null &&
+    dismissedTailSignature === typedPlanSignature;
+  const activeSegments = buildExecutablePageSegments(
+    typedSegments,
+    derivedFinalSegment,
+    !isDerivedFinalDismissed,
+  );
+  const expectedFiles = activeSegments.map((segment, index) =>
     buildPreviewFileName(deriveSplitBaseName(documentName || inputPath), segment, index),
   );
-  const rangeEntries: RangeEntry[] = segments.map((segment, index) => ({
+  const rangeEntries: RangeEntry[] = activeSegments.map((segment, index) => ({
     segment,
     fileName: outputFiles[index] ? getFileName(outputFiles[index]) : expectedFiles[index],
     isDerivedFinal:
-      derivedFinalSegment?.start === segment.start && derivedFinalSegment.end === segment.end,
+      derivedFinalSegment !== null && !isDerivedFinalDismissed && index === activeSegments.length - 1,
+    provenance:
+      derivedFinalSegment !== null && !isDerivedFinalDismissed && index === activeSegments.length - 1
+        ? "derived-final"
+        : "typed",
+    typedIndex:
+      derivedFinalSegment !== null && !isDerivedFinalDismissed && index === activeSegments.length - 1
+        ? null
+        : index,
   }));
   const pageItems = pageCount !== null ? buildPdfPageItems(pageCount) : [];
   const previewRequestPlan =
@@ -152,7 +207,7 @@ export function PdfSplitPage() {
   const thumbnailWindowPages = new Set(thumbnailRequest?.pageNumbers ?? []);
   const previewRequestOrder = previewRequestPlan.map((request) => request.sizePreset).join(",");
   const previewLoadingKeySet = new Set(previewLoadingKeys);
-  const selectedSegment = findPageSegmentForPage(segments, selectedPageNumber);
+  const selectedSegment = findPageSegmentForPage(activeSegments, selectedPageNumber);
   const focusPreviewCacheKey =
     inputPath && pageCount !== null
       ? buildPreviewCacheKey(inputPath, "focus", selectedPageNumber)
@@ -170,6 +225,7 @@ export function PdfSplitPage() {
     (thumbnailPreviewCacheKey ? previewLoadingKeySet.has(thumbnailPreviewCacheKey) : false);
   const selectedPreviewDataUri = toPreviewDataUri(selectedPreviewImage);
   const composerFeedbackMessage = validationMessage ?? t("rangePlanComposerHint");
+  const canDismissDerivedFinalEntry = canDismissDerivedFinalSegment(typedSegments);
   const planSummary =
     pageCount !== null && rangeEntries.length > 0
       ? `${rangeEntries.length} ${t("splitPlanOutputsUnit")} · ${pageCount} ${t("summaryPagesUnit")}`
@@ -180,7 +236,7 @@ export function PdfSplitPage() {
     Boolean(outputDir) &&
     pageCount !== null &&
     Boolean(rangeInput.trim()) &&
-    segments.length > 0 &&
+    activeSegments.length >= 2 &&
     !validationMessage &&
     !isBusy;
 
@@ -294,8 +350,8 @@ export function PdfSplitPage() {
       const metadata = await pdfSplitService.getPdfMetadata(selectedPath);
       setDocument(metadata);
       setPendingInputPath(null);
+      setDismissedTailSignature(null);
       setRangeInput("");
-      setSegments([]);
       setDerivedFinalSegment(null);
       setOutputFiles([]);
       resetPreviewState();
@@ -312,7 +368,7 @@ export function PdfSplitPage() {
   }
 
   async function handleChooseOutput() {
-    const selectedPath = await pdfSplitService.pickOutputDirectory();
+    const selectedPath = await pdfSplitService.pickOutputDirectory(outputDir || undefined);
     if (!selectedPath) {
       return;
     }
@@ -335,7 +391,7 @@ export function PdfSplitPage() {
 
     try {
       const response = await pdfSplitService.splitPdf(
-        toSplitRequestPayload(inputPath, outputDir, segments),
+        toSplitRequestPayload(inputPath, outputDir, activeSegments),
       );
       setOutputFiles(response.outputFiles);
       setStatus({
@@ -365,8 +421,67 @@ export function PdfSplitPage() {
     }
   }
 
+  function focusRangeInput(rewrite: RangeInputRewrite) {
+    const applyFocus = () => {
+      const textarea = rangeInputRef.current;
+
+      if (!textarea) {
+        return;
+      }
+
+      textarea.focus();
+      const selectionStart = Math.min(rewrite.selectionStart, textarea.value.length);
+      const selectionEnd = Math.min(Math.max(selectionStart, rewrite.selectionEnd), textarea.value.length);
+      textarea.setSelectionRange(selectionStart, selectionEnd);
+    };
+
+    if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(applyFocus);
+      return;
+    }
+
+    setTimeout(applyFocus, 0);
+  }
+
+  function applyRangeInputRewrite(rewrite: RangeInputRewrite) {
+    handleRangeInputChange(rewrite.value);
+    focusRangeInput(rewrite);
+  }
+
   function handleSelectRangeEntry(entry: RangeEntry) {
     setSelectedPageNumber(entry.segment.start);
+  }
+
+  function handleEditRangeEntry(entry: RangeEntry) {
+    if (entry.provenance === "derived-final") {
+      if (!derivedFinalSegment) {
+        return;
+      }
+
+      applyRangeInputRewrite(
+        buildRangeInputRewriteForDerivedFinalSegment(typedSegments, derivedFinalSegment),
+      );
+      return;
+    }
+
+    if (entry.typedIndex === null) {
+      return;
+    }
+
+    applyRangeInputRewrite(buildRangeInputRewriteForTypedSegment(typedSegments, entry.typedIndex));
+  }
+
+  function handleDismissDerivedFinalEntry() {
+    if (!derivedFinalSegment || !typedPlanSignature || !canDismissDerivedFinalEntry) {
+      return;
+    }
+
+    setDismissedTailSignature(typedPlanSignature);
+    setOutputFiles([]);
+
+    if (status.tone !== "running") {
+      setStatus(buildIdleStatus(pageCount));
+    }
   }
 
   return (
@@ -443,6 +558,7 @@ export function PdfSplitPage() {
             </div>
 
             <textarea
+              ref={rangeInputRef}
               className="field-textarea split-rangeTextarea"
               value={rangeInput}
               onChange={(event) => handleRangeInputChange(event.currentTarget.value)}
@@ -470,24 +586,53 @@ export function PdfSplitPage() {
                     }`}
                   >
                     <span className="split-rangeDot" />
-                    <button
-                      type="button"
-                      className="split-rangeButton"
-                      data-slot="range-row-action"
-                      onClick={() => handleSelectRangeEntry(entry)}
-                      aria-pressed={isPageInSegment(entry.segment, selectedPageNumber)}
-                    >
-                      <span className="split-rangeButtonHeader">
-                        <span className="split-rangeRowLabel">{entry.segment.label}</span>
-                        <span className="split-rangeRowCount">
-                          {`${entry.segment.pageCount} ${t("summaryPagesUnit")}`}
+                    <div className="split-rangeContent">
+                      <button
+                        type="button"
+                        className="split-rangeButton"
+                        data-slot="range-row-action"
+                        onClick={() => handleSelectRangeEntry(entry)}
+                        aria-pressed={isPageInSegment(entry.segment, selectedPageNumber)}
+                      >
+                        <span className="split-rangeButtonHeader">
+                          <span className="split-rangeRowLabel">{entry.segment.label}</span>
+                          <span className="split-rangeRowCount">
+                            {`${entry.segment.pageCount} ${t("summaryPagesUnit")}`}
+                          </span>
+                          {entry.isDerivedFinal ? (
+                            <span className="split-rangeBadge">{t("splitRangeDerivedBadge")}</span>
+                          ) : null}
                         </span>
-                        {entry.isDerivedFinal ? (
-                          <span className="split-rangeBadge">{t("splitRangeDerivedBadge")}</span>
+                        <span className="split-rangeRowMeta">{entry.fileName}</span>
+                      </button>
+                      <div className="split-rangeActions">
+                        <button
+                          type="button"
+                          className="split-rangeEditAction"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            handleEditRangeEntry(entry);
+                          }}
+                        >
+                          {t("splitRangeEditAction")}
+                        </button>
+                        {entry.provenance === "derived-final" ? (
+                          <button
+                            type="button"
+                            className="split-rangeRemoveAction"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              handleDismissDerivedFinalEntry();
+                            }}
+                            aria-label={t("splitRangeDismissAction")}
+                            title={t("splitRangeDismissAction")}
+                            disabled={!canDismissDerivedFinalEntry}
+                          >
+                            ×
+                          </button>
                         ) : null}
-                      </span>
-                      <span className="split-rangeRowMeta">{entry.fileName}</span>
-                    </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>

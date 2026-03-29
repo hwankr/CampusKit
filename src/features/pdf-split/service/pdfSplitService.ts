@@ -1,4 +1,5 @@
 import {
+  getDefaultOutputDirectory as loadDefaultOutputDirectory,
   getPdfMetadata as loadPdfMetadata,
   pickOutputDirectory,
   pickPdfFile,
@@ -15,6 +16,9 @@ import { buildPdfDocumentMetadata } from "../model/pdfDocument";
 export type { PdfPreviewImagePayload, RenderPdfPagesRequest, RenderPdfPagesResponse };
 
 export const pdfSplitService = {
+  getDefaultOutputDirectory() {
+    return loadDefaultOutputDirectory();
+  },
   async getPdfMetadata(inputPath: string) {
     const metadata = await loadPdfMetadata(inputPath);
     return buildPdfDocumentMetadata(inputPath, metadata);

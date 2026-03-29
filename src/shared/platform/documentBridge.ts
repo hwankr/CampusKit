@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { downloadDir } from "@tauri-apps/api/path";
 import { open } from "@tauri-apps/plugin-dialog";
 import type { SplitRequestPayload } from "../../features/pdf-split/model/splitJob";
 import type {
@@ -35,10 +36,15 @@ export async function pickPdfFile() {
   return coerceDialogPath(selected);
 }
 
-export async function pickOutputDirectory() {
+export async function getDefaultOutputDirectory() {
+  return downloadDir();
+}
+
+export async function pickOutputDirectory(defaultPath?: string) {
   const selected = await open({
     multiple: false,
     directory: true,
+    defaultPath,
   });
 
   return coerceDialogPath(selected);

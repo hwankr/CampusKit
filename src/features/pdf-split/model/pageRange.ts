@@ -11,6 +11,12 @@ export type ParsedPageRangePlan = {
   typedSegments: PageSegment[];
 };
 
+export type RangeInputRewrite = {
+  selectionEnd: number;
+  selectionStart: number;
+  value: string;
+};
+
 export function parsePageRangeInput(value: string, totalPages: number): ParsedPageRangePlan {
   if (!Number.isInteger(totalPages) || totalPages < 1) {
     throw new Error("validationOutOfBounds");
@@ -67,6 +73,46 @@ export function parsePageRangeInput(value: string, totalPages: number): ParsedPa
     segments,
     typedSegments,
   };
+}
+
+export function serializePageRangeInput(segments: PageSegment[]): string {
+  return segments.map((segment) => formatPageRangeToken(segment)).join(", ");
+}
+
+export function buildPageRangePlanSignature(typedSegments: PageSegment[], totalPages: number) {
+  return `${serializePageRangeInput(typedSegments)}::${totalPages}`;
+}
+
+export function buildExecutablePageSegments(
+  typedSegments: PageSegment[],
+  derivedFinalSegment: PageSegment | null,
+  includeDerivedFinalSegment: boolean,
+): PageSegment[] {
+  return includeDerivedFinalSegment && derivedFinalSegment
+    ? [...typedSegments, derivedFinalSegment]
+    : typedSegments;
+}
+
+export function buildRangeInputRewriteForTypedSegment(
+  typedSegments: PageSegment[],
+  typedIndex: number,
+): RangeInputRewrite {
+  if (!typedSegments[typedIndex]) {
+    throw new Error("validationMalformedRange");
+  }
+
+  return buildRangeInputRewrite(typedSegments, typedIndex);
+}
+
+export function buildRangeInputRewriteForDerivedFinalSegment(
+  typedSegments: PageSegment[],
+  derivedFinalSegment: PageSegment,
+): RangeInputRewrite {
+  return buildRangeInputRewrite([...typedSegments, derivedFinalSegment], typedSegments.length);
+}
+
+export function canDismissDerivedFinalSegment(typedSegments: PageSegment[]) {
+  return typedSegments.length > 1;
 }
 
 export function parseSplitPointInput(value: string): number {
@@ -179,7 +225,30 @@ function buildPageSegment(start: number, end: number): PageSegment {
   return {
     start,
     end,
-    label: start === end ? `${start}` : `${start}-${end}`,
+    label: formatPageRangeToken({ start, end }),
     pageCount: end - start + 1,
   };
+}
+
+function buildRangeInputRewrite(
+  segments: PageSegment[],
+  targetIndex: number,
+): RangeInputRewrite {
+  const tokens = segments.map((segment) => formatPageRangeToken(segment));
+  const value = tokens.join(", ");
+  let selectionStart = 0;
+
+  for (let index = 0; index < targetIndex; index += 1) {
+    selectionStart += tokens[index].length + 2;
+  }
+
+  return {
+    value,
+    selectionStart,
+    selectionEnd: selectionStart + tokens[targetIndex].length,
+  };
+}
+
+function formatPageRangeToken(segment: Pick<PageSegment, "start" | "end">) {
+  return segment.start === segment.end ? `${segment.start}` : `${segment.start}-${segment.end}`;
 }
