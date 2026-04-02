@@ -6,9 +6,7 @@ export type PageSegment = {
 };
 
 export type ParsedPageRangePlan = {
-  derivedFinalSegment: PageSegment | null;
   segments: PageSegment[];
-  typedSegments: PageSegment[];
 };
 
 export type RangeInputRewrite = {
@@ -28,29 +26,21 @@ export function parsePageRangeInput(value: string, totalPages: number): ParsedPa
     throw new Error("validationEmptyRange");
   }
 
-  const typedSegments = normalizedInput
+  const segments = normalizedInput
     .split(/[\n,]+/)
     .map((token) => token.trim())
     .filter(Boolean)
     .map((token) => parsePageRangeToken(token));
 
-  if (typedSegments.length === 0) {
+  if (segments.length === 0) {
     throw new Error("validationEmptyRange");
   }
 
   let previousEnd = 0;
 
-  typedSegments.forEach((segment, index) => {
-    if (index === 0 && segment.start !== 1) {
-      throw new Error("validationRangeMustStartAtOne");
-    }
-
+  segments.forEach((segment) => {
     if (segment.start <= previousEnd) {
       throw new Error("validationOverlappingRange");
-    }
-
-    if (segment.start > previousEnd + 1 && index > 0) {
-      throw new Error("validationRangeGapNotAllowed");
     }
 
     if (segment.end > totalPages) {
@@ -60,37 +50,13 @@ export function parsePageRangeInput(value: string, totalPages: number): ParsedPa
     previousEnd = segment.end;
   });
 
-  const derivedFinalSegment =
-    previousEnd < totalPages ? buildPageSegment(previousEnd + 1, totalPages) : null;
-  const segments = derivedFinalSegment ? [...typedSegments, derivedFinalSegment] : typedSegments;
-
-  if (segments.length < 2) {
-    throw new Error("validationRangeRequiresAtLeastTwoOutputs");
-  }
-
   return {
-    derivedFinalSegment,
     segments,
-    typedSegments,
   };
 }
 
 export function serializePageRangeInput(segments: PageSegment[]): string {
   return segments.map((segment) => formatPageRangeToken(segment)).join(", ");
-}
-
-export function buildPageRangePlanSignature(typedSegments: PageSegment[], totalPages: number) {
-  return `${serializePageRangeInput(typedSegments)}::${totalPages}`;
-}
-
-export function buildExecutablePageSegments(
-  typedSegments: PageSegment[],
-  derivedFinalSegment: PageSegment | null,
-  includeDerivedFinalSegment: boolean,
-): PageSegment[] {
-  return includeDerivedFinalSegment && derivedFinalSegment
-    ? [...typedSegments, derivedFinalSegment]
-    : typedSegments;
 }
 
 export function buildRangeInputRewriteForTypedSegment(
@@ -102,17 +68,6 @@ export function buildRangeInputRewriteForTypedSegment(
   }
 
   return buildRangeInputRewrite(typedSegments, typedIndex);
-}
-
-export function buildRangeInputRewriteForDerivedFinalSegment(
-  typedSegments: PageSegment[],
-  derivedFinalSegment: PageSegment,
-): RangeInputRewrite {
-  return buildRangeInputRewrite([...typedSegments, derivedFinalSegment], typedSegments.length);
-}
-
-export function canDismissDerivedFinalSegment(typedSegments: PageSegment[]) {
-  return typedSegments.length > 1;
 }
 
 export function parseSplitPointInput(value: string): number {

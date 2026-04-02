@@ -2,145 +2,91 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   addSplitPoint,
-  buildExecutablePageSegments,
-  buildPageRangePlanSignature,
-  buildRangeInputRewriteForDerivedFinalSegment,
   buildRangeInputRewriteForTypedSegment,
   buildPageSegmentsFromSplitPoints,
-  canDismissDerivedFinalSegment,
   parsePageRangeInput,
   parseSplitPointInput,
   removeSplitPoint,
   serializePageRangeInput,
 } from "./pageRange.ts";
 
-test("parsePageRangeInput supports comma-separated typed ranges and auto-completes the final range", () => {
-  const plan = parsePageRangeInput("1-20, 21-40", 60);
+test("parsePageRangeInput keeps only the explicit sparse ranges the user typed", () => {
+  const plan = parsePageRangeInput("5-10, 11-20", 30);
 
   assert.deepEqual(plan.segments, [
-    { start: 1, end: 20, label: "1-20", pageCount: 20 },
-    { start: 21, end: 40, label: "21-40", pageCount: 20 },
-    { start: 41, end: 60, label: "41-60", pageCount: 20 },
+    { start: 5, end: 10, label: "5-10", pageCount: 6 },
+    { start: 11, end: 20, label: "11-20", pageCount: 10 },
   ]);
-  assert.deepEqual(plan.typedSegments, [
-    { start: 1, end: 20, label: "1-20", pageCount: 20 },
-    { start: 21, end: 40, label: "21-40", pageCount: 20 },
+});
+
+test("parsePageRangeInput accepts a single explicit range without forcing extra outputs", () => {
+  const plan = parsePageRangeInput("5-10", 30);
+
+  assert.deepEqual(plan.segments, [
+    { start: 5, end: 10, label: "5-10", pageCount: 6 },
   ]);
-  assert.deepEqual(plan.derivedFinalSegment, {
-    start: 41,
-    end: 60,
-    label: "41-60",
-    pageCount: 20,
-  });
 });
 
 test("parsePageRangeInput supports newline-separated tokens and single-page entries", () => {
-  const plan = parsePageRangeInput("1\n2-3", 5);
+  const plan = parsePageRangeInput("5\n8-9", 12);
 
   assert.deepEqual(plan.segments, [
-    { start: 1, end: 1, label: "1", pageCount: 1 },
-    { start: 2, end: 3, label: "2-3", pageCount: 2 },
-    { start: 4, end: 5, label: "4-5", pageCount: 2 },
+    { start: 5, end: 5, label: "5", pageCount: 1 },
+    { start: 8, end: 9, label: "8-9", pageCount: 2 },
   ]);
 });
 
-test("parsePageRangeInput rejects a plan that does not start at page 1", () => {
-  assert.throws(() => parsePageRangeInput("5-10", 20), {
-    message: "validationRangeMustStartAtOne",
+test("parsePageRangeInput allows gaps between explicit ranges", () => {
+  const plan = parsePageRangeInput("1-2, 5-6", 10);
+
+  assert.deepEqual(plan.segments, [
+    { start: 1, end: 2, label: "1-2", pageCount: 2 },
+    { start: 5, end: 6, label: "5-6", pageCount: 2 },
+  ]);
+});
+
+test("parsePageRangeInput rejects overlapping or out-of-order ranges", () => {
+  assert.throws(() => parsePageRangeInput("5-10, 9-12", 20), {
+    message: "validationOverlappingRange",
+  });
+  assert.throws(() => parsePageRangeInput("11-20, 5-10", 20), {
+    message: "validationOverlappingRange",
   });
 });
 
-test("parsePageRangeInput rejects gaps between typed ranges", () => {
-  assert.throws(() => parsePageRangeInput("1-10, 12-20", 20), {
-    message: "validationRangeGapNotAllowed",
+test("parsePageRangeInput rejects malformed input", () => {
+  assert.throws(() => parsePageRangeInput("5-10-12", 20), {
+    message: "validationMalformedRange",
   });
 });
 
-test("parsePageRangeInput rejects a single full-document segment because split needs 2 outputs", () => {
-  assert.throws(() => parsePageRangeInput("1-20", 20), {
-    message: "validationRangeRequiresAtLeastTwoOutputs",
+test("parsePageRangeInput rejects descending input", () => {
+  assert.throws(() => parsePageRangeInput("10-5", 20), {
+    message: "validationDescendingRange",
+  });
+});
+
+test("parsePageRangeInput rejects out-of-bounds input", () => {
+  assert.throws(() => parsePageRangeInput("5-25", 20), {
+    message: "validationOutOfBounds",
   });
 });
 
 test("serializePageRangeInput canonicalizes typed segments into a compact editor string", () => {
-  const plan = parsePageRangeInput("1 - 20 , 21-29", 100);
+  const plan = parsePageRangeInput("5 - 10 , 11-20", 100);
 
-  assert.equal(serializePageRangeInput(plan.typedSegments), "1-20, 21-29");
+  assert.equal(serializePageRangeInput(plan.segments), "5-10, 11-20");
 });
 
 test("buildRangeInputRewriteForTypedSegment preserves typed meaning and targets the chosen token", () => {
-  const plan = parsePageRangeInput("1 - 20 , 21-29", 100);
-  const rewrite = buildRangeInputRewriteForTypedSegment(plan.typedSegments, 1);
+  const plan = parsePageRangeInput("5 - 10 , 11-20", 100);
+  const rewrite = buildRangeInputRewriteForTypedSegment(plan.segments, 1);
 
   assert.deepEqual(rewrite, {
-    value: "1-20, 21-29",
+    value: "5-10, 11-20",
     selectionStart: 6,
     selectionEnd: 11,
   });
-});
-
-test("buildRangeInputRewriteForDerivedFinalSegment materializes the auto-completed final row", () => {
-  const plan = parsePageRangeInput("1-20, 21-29", 100);
-  const rewrite = buildRangeInputRewriteForDerivedFinalSegment(
-    plan.typedSegments,
-    plan.derivedFinalSegment!,
-  );
-
-  assert.deepEqual(rewrite, {
-    value: "1-20, 21-29, 30-100",
-    selectionStart: 13,
-    selectionEnd: 19,
-  });
-});
-
-test("editing a materialized final row allows the parser to derive the next trailing row", () => {
-  const plan = parsePageRangeInput("1-20, 21-29", 100);
-  const rewrite = buildRangeInputRewriteForDerivedFinalSegment(
-    plan.typedSegments,
-    plan.derivedFinalSegment!,
-  );
-  const reparsed = parsePageRangeInput(rewrite.value.replace("30-100", "30-60"), 100);
-
-  assert.deepEqual(reparsed.typedSegments, [
-    { start: 1, end: 20, label: "1-20", pageCount: 20 },
-    { start: 21, end: 29, label: "21-29", pageCount: 9 },
-    { start: 30, end: 60, label: "30-60", pageCount: 31 },
-  ]);
-  assert.deepEqual(reparsed.derivedFinalSegment, {
-    start: 61,
-    end: 100,
-    label: "61-100",
-    pageCount: 40,
-  });
-});
-
-test("buildExecutablePageSegments can omit the derived tail without mutating typed segments", () => {
-  const plan = parsePageRangeInput("1-20, 21-29", 100);
-
-  assert.deepEqual(
-    buildExecutablePageSegments(plan.typedSegments, plan.derivedFinalSegment, false),
-    [
-      { start: 1, end: 20, label: "1-20", pageCount: 20 },
-      { start: 21, end: 29, label: "21-29", pageCount: 9 },
-    ],
-  );
-  assert.equal(serializePageRangeInput(plan.typedSegments), "1-20, 21-29");
-});
-
-test("buildPageRangePlanSignature stays stable across formatting changes", () => {
-  const formatted = parsePageRangeInput("1-20, 21-40", 100);
-  const unformatted = parsePageRangeInput("1 - 20,\n21-40", 100);
-
-  assert.equal(
-    buildPageRangePlanSignature(formatted.typedSegments, 100),
-    buildPageRangePlanSignature(unformatted.typedSegments, 100),
-  );
-});
-
-test("canDismissDerivedFinalSegment blocks one-output collapse cases", () => {
-  const plan = parsePageRangeInput("1-20", 40);
-
-  assert.equal(canDismissDerivedFinalSegment(plan.typedSegments), false);
 });
 
 test("parseSplitPointInput trims and parses a positive boundary", () => {
