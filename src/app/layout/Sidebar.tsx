@@ -63,8 +63,6 @@ export function Sidebar({ tools, activeToolId, onSelectTool }: SidebarProps) {
             <div className="sidebar-profileMeta">{t("headerKicker")}</div>
           </div>
         </div>
-
-        <div className="sidebar-footnote">{t("sidebarFootnote")}</div>
       </div>
     </div>
   );

@@ -2,27 +2,24 @@ export const koMessages = {
   appTitle: "CampusKit",
   appTagline: "문서 작업을 위한 데스크톱 워크벤치",
   sidebarAriaLabel: "문서 도구 탐색",
-  sidebarFootnote:
-    "1차 목표는 PDF Split만 구현하고, 나머지 도구는 구조만 먼저 준비한다.",
-  headerKicker: "Phase 1 Workspace",
+  headerKicker: "문서 도구",
   headerLocaleLabel: "기본 언어",
   headerModeLabel: "상태",
-  statusReady: "준비됨",
-  statusPlanned: "예정",
+  statusReady: "사용 가능",
+  statusPlanned: "준비 중",
   navPdfSplit: "PDF Split",
   navConvert: "Convert",
   navMerge: "Merge",
   navExtract: "Extract",
   pdfSplitTitle: "PDF Split",
-  pdfSplitDescription: "하나의 PDF를 출력 범위 계획대로 나눈다.",
+  pdfSplitDescription: "하나의 PDF를 원하는 범위로 나눕니다.",
   convertTitle: "Convert",
-  convertDescription: "문서 형식 변환 도구는 다음 단계에서 같은 셸에 연결한다.",
+  convertDescription: "문서를 다른 형식으로 변환합니다.",
   mergeTitle: "Merge",
-  mergeDescription: "여러 문서를 하나로 합치는 흐름은 다음 단계에서 이어 붙인다.",
+  mergeDescription: "여러 문서를 하나로 합칩니다.",
   extractTitle: "Extract",
-  extractDescription: "페이지 또는 에셋 추출 흐름도 같은 구조 위에 자연스럽게 확장한다.",
-  placeholderBody:
-    "이번 단계에서는 레이아웃과 설명 구조만 고정하고 실제 동작은 연결하지 않는다.",
+  extractDescription: "문서에서 필요한 페이지나 자산을 추출합니다.",
+  placeholderBody: "이 도구는 준비 중입니다. 제공되면 이 화면에서 바로 사용할 수 있습니다.",
   pdfSplitFormBadge: "Split Setup",
   pdfSplitFormTitle: "입력 파일과 분할점을 정리한다",
   pdfSplitFormBody:
@@ -91,11 +88,6 @@ export const koMessages = {
   validationMalformedSplitPoint: "분할점은 숫자만 입력해야 한다.",
   validationDuplicateSplitPoint: "같은 분할점은 한 번만 지정할 수 있다.",
   validationSplitPointOutOfBounds: "분할점은 1페이지 이상, 마지막 페이지 이전이어야 한다.",
-  pdfSplitMockBadge: "Phase 2 Mock",
-  pdfSplitMockTitle: "실제 PDF 처리 전에 분할 흐름을 먼저 본다",
-  pdfSplitMockBody:
-    "이 화면은 empty state와 sample state만으로 앞으로의 PDF Split 흐름을 설명한다. 이 단계에서는 파싱, 미리보기 렌더링, 파일 저장을 하지 않는다.",
-  pdfSplitMockNotice: "이 단계에서는 mock data만 사용한다",
   pdfSplitDropzoneTitle: "파일 선택 또는 드롭 영역",
   pdfSplitDropzoneBody:
     "여기가 앞으로 실제 PDF를 받는 시작점이 된다. 지금은 사용자가 어디서 작업을 시작하는지와 선택된 파일이 어디에 보일지만 보여준다.",
@@ -106,10 +98,7 @@ export const koMessages = {
   pdfSplitFlowChoose: "PDF를 선택해 실제 문서 정보를 불러온다.",
   pdfSplitFlowInspect: "출력 폴더를 고르고 문서 정보를 확인한다.",
   pdfSplitFlowRange: "유효한 분할점을 추가하고 계산된 결과 범위를 검토한다.",
-  pdfSplitFlowSave: "실제 저장은 기존 backend를 유지하되, 이번 단계에서는 범위 계산 검증까지만 본다.",
   pdfSplitDocTitle: "문서 정보",
-  pdfSplitDocEmpty:
-    "PDF가 불러와지면 여기에 문서 정보가 보인다. empty state에서도 자리를 보여줘 다음 단계가 직관적으로 이해되도록 한다.",
   pdfSplitDocFocusLabel: "집중 범위",
   pdfSplitThumbTitle: "썸네일 레일",
   pdfSplitThumbEmpty: "PDF를 불러오면 여기에 실제 페이지 썸네일이 보인다.",
@@ -127,7 +116,6 @@ export const koMessages = {
   pdfSplitSaveBody:
     "저장은 기존 split backend를 실행한다. 썸네일 레일과 큰 미리보기 패널은 현재 불러온 PDF 페이지를 실제로 렌더링한다.",
   pdfSplitSaveAction: "분할 파일 저장",
-  pdfSplitMockChip: "Live split",
   pdfSplitIntakeBody:
     "실제 PDF를 선택하면 문서 메타데이터를 불러오고, 이 화면에서 분할 흐름을 계속 진행한다.",
   pdfSplitSetupTitle: "분할 설정",
@@ -137,7 +125,6 @@ export const koMessages = {
   pdfSplitSavedOutputLabel: "저장 완료",
   pdfSplitPreviewHintEmpty:
     "PDF를 불러오면 분할 지점을 넣기 전과 후 모두 선택한 페이지 미리보기가 여기에 보인다.",
-  pdfSplitWorkspaceNotice: "실제 파일/저장 흐름 연결됨",
 } as const;
 
 export type MessageKey = keyof typeof koMessages;
