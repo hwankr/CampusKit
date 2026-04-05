@@ -304,13 +304,9 @@ fn validate_preview_page_numbers(page_numbers: &[usize], page_count: usize) -> R
 }
 
 fn validate_segments(segments: &[SplitSegment], page_count: usize) -> Result<(), String> {
-    if segments.len() < 2 {
-        return Err("At least two output segments are required".into());
-    }
-
     let mut previous_end = 0;
 
-    for (index, segment) in segments.iter().enumerate() {
+    for segment in segments.iter() {
         if segment.start < 1 || segment.end < 1 {
             return Err("Page indexes must be 1-based".into());
         }
@@ -323,16 +319,8 @@ fn validate_segments(segments: &[SplitSegment], page_count: usize) -> Result<(),
             return Err("Segment exceeds the PDF page count".into());
         }
 
-        if index == 0 && segment.start != 1 {
-            return Err("The first segment must start at page 1".into());
-        }
-
-        if index > 0 && segment.start <= previous_end {
+        if segment.start <= previous_end {
             return Err("Overlapping page segments are not allowed".into());
-        }
-
-        if index > 0 && segment.start != previous_end + 1 {
-            return Err("Gapless split segments are required".into());
         }
 
         previous_end = segment.end;
@@ -436,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_segments_that_do_not_start_at_page_one() {
+    fn allows_segments_that_do_not_start_at_page_one() {
         let result = validate_segments(
             &[
                 SplitSegment { start: 2, end: 4 },
@@ -445,11 +433,11 @@ mod tests {
             8,
         );
 
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn rejects_segments_with_gaps() {
+    fn allows_segments_with_gaps() {
         let result = validate_segments(
             &[
                 SplitSegment { start: 1, end: 3 },
@@ -458,14 +446,14 @@ mod tests {
             8,
         );
 
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]
-    fn rejects_a_single_full_document_segment() {
+    fn allows_a_single_full_document_segment() {
         let result = validate_segments(&[SplitSegment { start: 1, end: 8 }], 8);
 
-        assert!(result.is_err());
+        assert!(result.is_ok());
     }
 
     #[test]

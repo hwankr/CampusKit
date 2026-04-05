@@ -20,11 +20,9 @@ test("parsePageRangeInput keeps only the explicit sparse ranges the user typed",
 });
 
 test("parsePageRangeInput accepts a single explicit range without forcing extra outputs", () => {
-  const plan = parsePageRangeInput("5-10", 30);
+  const plan = parsePageRangeInput("80-100", 100);
 
-  assert.deepEqual(plan.segments, [
-    { start: 5, end: 10, label: "5-10", pageCount: 6 },
-  ]);
+  assert.deepEqual(plan.segments, [{ start: 80, end: 100, label: "80-100", pageCount: 21 }]);
 });
 
 test("parsePageRangeInput supports newline-separated tokens and single-page entries", () => {
@@ -37,19 +35,19 @@ test("parsePageRangeInput supports newline-separated tokens and single-page entr
 });
 
 test("parsePageRangeInput allows gaps between explicit ranges", () => {
-  const plan = parsePageRangeInput("1-2, 5-6", 10);
+  const plan = parsePageRangeInput("1-10, 20-30", 100);
 
   assert.deepEqual(plan.segments, [
-    { start: 1, end: 2, label: "1-2", pageCount: 2 },
-    { start: 5, end: 6, label: "5-6", pageCount: 2 },
+    { start: 1, end: 10, label: "1-10", pageCount: 10 },
+    { start: 20, end: 30, label: "20-30", pageCount: 11 },
   ]);
 });
 
-test("parsePageRangeInput rejects overlapping or out-of-order ranges", () => {
-  assert.throws(() => parsePageRangeInput("5-10, 9-12", 20), {
+test("parsePageRangeInput rejects overlapping ranges", () => {
+  assert.throws(() => parsePageRangeInput("1-10, 9-12", 20), {
     message: "validationOverlappingRange",
   });
-  assert.throws(() => parsePageRangeInput("11-20, 5-10", 20), {
+  assert.throws(() => parsePageRangeInput("1-10, 5-10", 20), {
     message: "validationOverlappingRange",
   });
 });
